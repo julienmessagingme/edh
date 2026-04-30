@@ -1,0 +1,19 @@
+services:
+  edh-app:
+    build: .
+    image: edh-app:latest
+    container_name: edh-app
+    restart: unless-stopped
+    env_file: .env
+    expose:
+      - "3000"
+    networks:
+      - default
+      - npm
+
+networks:
+  # NPM reaches this container via the shared external network. Same pattern
+  # as mieuxassure / educnat / keolis on this VPS.
+  npm:
+    external: true
+    name: mcp-robot_default
