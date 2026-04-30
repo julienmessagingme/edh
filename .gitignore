@@ -12,3 +12,5 @@ dist
 .idea
 coverage
 .turbo
+.claude
+.tmp-scaffold

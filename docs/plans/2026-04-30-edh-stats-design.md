@@ -22,14 +22,16 @@ Une seule app, un seul container Docker, sur le VPS OVH `146.59.233.252`.
 
 | Sujet | Choix |
 |-------|-------|
-| Création d'URLs | À la demande (pas de pool pré-généré) |
-| Slug | Aléatoire 8 chars (nanoid) — le nom est un label libre, non unique |
+| Multi-écoles | 9 écoles (1 bearer token par école) — UI sidebar gauche listant les écoles, contexte d'école sélectionnée filtre URLs et Stats. Liste : EFAP, 3WA, Brassart, CESINE, EJF, ESEC, École Bleue, ICART, IFA |
+| Stockage écoles + tokens | Env vars (`MM_TOKEN_EFAP`, `MM_TOKEN_3WA`, …) + constante `SCHOOLS` dans le code. Ajout d'école = redeploy. |
+| Création d'URLs | À la demande (pas de pool pré-généré), scopée à l'école sélectionnée |
+| Slug | Aléatoire 8 chars (nanoid) — global unique, le nom est un label libre, non unique |
 | Comptage clics | 1 row par clic avec timestamp + IP + user-agent + referer |
-| Auth | 2 utilisateurs (Julien + EDH), même droits, email + password bcrypt |
+| Auth | 2 utilisateurs (Julien + EDH), même droits, accès aux 10 écoles, email + password bcrypt |
 | Hébergement | Docker sur VPS, derrière NPM existant, sous `edh.messagingme.app` |
 | Versioning destination | Quand on change la destination, nouvelle version créée — historique des clics par version conservé |
-| Mapping URL ↔ custom event | Sélection libre dans l'UI stats (pas de mapping en base) |
-| Cron sync messagingme | 22:00 Europe/Paris, cron interne `node-cron` dans le process Next.js |
+| Mapping URL ↔ custom event | Sélection libre dans l'UI stats (pas de mapping en base), au sein de la même école |
+| Cron sync messagingme | 22:00 Europe/Paris, séquentiel sur les 10 écoles, `node-cron` dans le process Next.js |
 | Stack | Next.js 15 App Router, Tailwind 4 + shadcn, Supabase (REST), bcrypt + jose |
 | DNS | A record `edh` → `146.59.233.252` (proxied Cloudflare, cohérent avec `mieuxassure`) |
 
@@ -93,6 +95,8 @@ Une seule app, un seul container Docker, sur le VPS OVH `146.59.233.252`.
 
 ## 5. Schéma DB
 
+**Note multi-écoles** : la liste des écoles n'est PAS en DB (env-driven). Mais chaque row liée à une école porte un `school_slug text not null` (ex: `"efap"`, `"iscom"`) servant de discriminant. L'app valide à l'écriture que `school_slug` ∈ `SCHOOLS` (constante code).
+
 ```sql
 users
   id              uuid PK default gen_random_uuid()
@@ -103,8 +107,9 @@ users
 
 redirect_events
   id              uuid PK
-  slug            text unique not null
-  name            text not null
+  school_slug     text not null              -- école propriétaire
+  slug            text unique not null       -- global unique (l'URL /r/<slug> est cross-école)
+  name            text not null              -- ex: "template_CESINE"
   created_by      uuid FK users
   created_at      timestamptz default now()
   archived_at     timestamptz
@@ -129,45 +134,82 @@ clicks
   country         text
 
 mm_events
-  event_ns        text PK
+  event_ns        text not null              -- ID messagingme (ex: "f257795ev111183")
+  school_slug     text not null              -- école propriétaire
   name            text not null
   description     text
   text_label      text
   price_label     text
   number_label    text
   last_synced_at  timestamptz
+  -- PK composite (school_slug, event_ns) car un event_ns pourrait théoriquement
+  -- collider entre instances messagingme
 
 mm_occurrences
-  id              bigint PK
-  event_ns        text FK mm_events
+  id              bigint not null            -- id messagingme
+  school_slug     text not null
+  event_ns        text not null
   user_ns         text
   text_value      text
   price_value     numeric
   number_value    numeric
   occurred_at     timestamptz
+  -- PK composite (school_slug, id)
+  -- FK (school_slug, event_ns) → mm_events
 
 mm_sync_state
-  event_ns        text PK FK mm_events
+  school_slug         text not null
+  event_ns            text not null
   last_occurrence_id  bigint
   last_run_at         timestamptz
-  last_run_status     text
+  last_run_status     text                   -- 'success' | 'error'
   last_run_error      text
+  -- PK composite (school_slug, event_ns)
 ```
 
 **Index** :
-- `clicks(event_id, clicked_at)`
-- `mm_occurrences(event_ns, occurred_at)`
+- `redirect_events(school_slug, archived_at)` — liste de l'école courante
+- `clicks(event_id, clicked_at)` — histogramme par event
+- `mm_occurrences(school_slug, event_ns, occurred_at)` — histogramme par event de l'école
 - `redirect_versions(event_id) WHERE active_to IS NULL` (partial unique)
 
-**Pas de RLS.** Service-role server-side uniquement.
+**Pas de RLS.** Service-role server-side uniquement. Le filtrage par `school_slug` est appliqué côté app dans toutes les queries.
 
 ---
 
-## 6. Onglet 1 — Pilotage des URLs
+## 6. Layout général + sélection d'école
 
-**Liste de cards** : pour chaque event non archivé, affichage du nom, slug, URL courte, destination courante (avec n° de version), total clics, dernier clic.
+```
+┌─────────────────────────────────────────────────────────────┐
+│  EDH Stats                          julien@... [↪ Se déco]  │
+├─────────────┬───────────────────────────────────────────────┤
+│ Écoles      │  [URLs] [Stats]                               │
+│             │                                               │
+│ • EFAP   ●  │   ... contenu de l'école sélectionnée         │
+│ • ISCOM     │                                               │
+│ • ICART     │                                               │
+│ • SUP'DE.   │                                               │
+│ • IFAG      │                                               │
+│ • ESDAC     │                                               │
+│ • ...       │                                               │
+│             │                                               │
+└─────────────┴───────────────────────────────────────────────┘
+```
 
-**Création** : modal `+ Nouvel événement` → champs `Nom` + `Destination URL` (zod validation http/https) → `POST /api/events` génère slug nanoid, insert event + version v1.
+- Sidebar gauche fixe (~200 px), liste des 10 écoles depuis la constante `SCHOOLS` (importée depuis env vars au boot).
+- École sélectionnée surlignée + persistée en cookie `edh_school` (1 an).
+- Default école au premier login = première de la liste (`EFAP`).
+- Toutes les pages auth-gated (`URLs`, `Stats`) sont scopées par cette sélection.
+- Cliquer une école → `router.push('/?school=<slug>')` ou simplement update du cookie + reload du contenu.
+- L'URL `/r/<slug>` (redirect public) est **cross-école** : un slug est unique globalement, peu importe quelle école l'a créé.
+
+---
+
+## 7. Onglet 1 — Pilotage des URLs
+
+**Liste de cards** : pour chaque event non archivé **de l'école courante**, affichage du nom, slug, URL courte, destination courante (avec n° de version), total clics, dernier clic.
+
+**Création** : modal `+ Nouvel événement` → champs `Nom` + `Destination URL` (zod validation http/https) → `POST /api/events` (l'école courante est lue depuis le cookie côté serveur) génère slug nanoid, insert event + version v1 avec `school_slug` = école courante.
 
 **Modifier la destination** : modal → `POST /api/events/:id/versions` → ferme version courante (`active_to = now()`), insère v+1. Le slug est immuable.
 
@@ -190,15 +232,15 @@ Latence cible : <50ms.
 
 ---
 
-## 7. Onglet 2 — Stats
+## 8. Onglet 2 — Stats
 
 **Sélecteur de période** en haut : 2 date pickers + presets 7j / 30j / 90j. Default = 30 derniers jours.
 
-**Liste accordéons** triée par nom (mm_events). En-tête fermé : nom + total occurrences sur la période.
+**Liste accordéons** triée par nom des `mm_events` **de l'école courante**. En-tête fermé : nom + total occurrences sur la période.
 
 **Quand on ouvre un accordéon** :
 - Histogramme journalier (BarChart) des occurrences en Europe/Paris.
-- Dropdown "Comparer avec…" listant tous les `redirect_events` non archivés.
+- Dropdown "Comparer avec…" listant tous les `redirect_events` non archivés **de l'école courante**.
 - Quand une URL est sélectionnée :
   - BarChart 2 séries (occurrences + clics) côte-à-côte.
   - LineChart du ratio quotidien `clics / occurrences`.
@@ -208,41 +250,51 @@ Latence cible : <50ms.
 
 **Bouton "⟳ Re-sync"** → `POST /api/cron/sync` (auth Bearer interne) pour forcer un sync hors de 22:00.
 
-**Endpoints** :
+**Endpoints** (l'école courante est lue depuis le cookie côté serveur) :
 - `GET /api/stats/custom-events?from=YYYY-MM-DD&to=YYYY-MM-DD`
 - `GET /api/stats/custom-events/:event_ns/daily?from=...&to=...`
 - `GET /api/stats/clicks/:event_id/daily?from=...&to=...`
-- `POST /api/cron/sync`
+- `POST /api/cron/sync` — relance manuelle, sync les 10 écoles séquentiellement
 
 **Buckets en Europe/Paris** : une occurrence à 23h UTC le 14 avril compte pour le 15 avril.
 
 ---
 
-## 8. Cron sync messagingme
+## 9. Cron sync messagingme (10 écoles)
 
 **Schedule** : `0 22 * * *` Europe/Paris, dans le process Next.js via `node-cron`. Bootstrap dans `src/instrumentation.ts` (Next 15).
 
-**Algorithme `syncCustomEvents()`** :
+**Algorithme `syncAllSchools()`** :
 
-1. Refresh `mm_events` :
-   - GET `/api/flow/custom-events` (paginer si > 1 page).
-   - Upsert chaque event (`event_ns` PK).
-2. Pour chaque event :
+```
+for school of SCHOOLS:                       # séquentiel (10 écoles)
+  try:
+    syncSchool(school)                        # token = school.bearerToken (env)
+  catch err:
+    log err pour cette école, continue
+```
+
+**`syncSchool(school)`** :
+
+1. Refresh `mm_events` pour cette école :
+   - GET `/api/flow/custom-events` avec Bearer = token école (paginer si > 1 page).
+   - Upsert chaque event sur `(school_slug, event_ns)`.
+2. Pour chaque event de cette école :
    - Lire `mm_sync_state.last_occurrence_id` (NULL au premier run).
    - GET `/api/flow/custom-events/data?event_ns=X&page=N` (du plus récent au plus ancien).
-   - Insérer les rows avec `id > last_occurrence_id`. Stop dès qu'on tombe sur `id <= last_occurrence_id`.
+   - Insérer les rows avec `id > last_occurrence_id` et `school_slug = school.slug`. Stop dès qu'on tombe sur `id <= last_occurrence_id`.
    - Update `mm_sync_state` : `last_occurrence_id = max(id ingéré)`, `last_run_at = now()`, `last_run_status = 'success'`.
-3. En cas d'erreur sur un event : log dans `mm_sync_state.last_run_error`, continue avec les autres.
+3. En cas d'erreur sur un event : log dans `mm_sync_state.last_run_error`, continue avec les autres events de la même école.
 
-**Trigger manuel** : `POST /api/cron/sync` avec header `Authorization: Bearer ${INTERNAL_API_KEY}` → exécute le même `syncCustomEvents()`.
+**Trigger manuel** : `POST /api/cron/sync` avec header `Authorization: Bearer ${INTERNAL_API_KEY}` → exécute le même `syncAllSchools()`. Optionnel : query param `?school=efap` pour ne sync qu'une école.
 
-**Premier run** : ingest complet (84 pages × 4 events ≈ 1-2 min, OK).
+**Premier run** : ingest complet de toutes les écoles. Si chaque école a ~4 events × ~84 pages ≈ 1-2 min, total ≈ 10-20 min. OK pour un one-shot.
 
 **Retry** : 2 retries avec backoff sur 5xx + timeouts, fail-fast sur 4xx.
 
 ---
 
-## 9. Auth
+## 10. Auth
 
 - `/login` (UI) → `POST /api/auth/login` → bcrypt.compare → cookie `edh_session` JWT HS256 signé `AUTH_SECRET`, TTL 7j.
 - `POST /api/auth/logout` → clear cookie.
@@ -251,7 +303,7 @@ Latence cible : <50ms.
 
 ---
 
-## 10. Variables d'environnement
+## 11. Variables d'environnement
 
 | Variable | Usage |
 |----------|-------|
@@ -259,16 +311,33 @@ Latence cible : <50ms.
 | `SUPABASE_SERVICE_ROLE_KEY` | server only |
 | `AUTH_SECRET` | JWT signing, 64 chars hex |
 | `MESSAGINGME_API_BASE` | `https://ai.messagingme.app/api` |
-| `MESSAGINGME_API_TOKEN` | Bearer pour les appels |
+| `MM_TOKEN_EFAP` | Bearer EFAP (déjà connu) |
+| `MM_TOKEN_ISCOM` | Bearer ISCOM |
+| `MM_TOKEN_ICART` | Bearer ICART |
+| `MM_TOKEN_<…>` | 7 autres écoles (à fournir) |
 | `INTERNAL_API_KEY` | Bearer pour `/api/cron/sync` manuel |
 | `CRON_TIMEZONE` | `Europe/Paris` |
 | `PUBLIC_BASE_URL` | `https://edh.messagingme.app` |
+
+**Constante `SCHOOLS`** dans `src/lib/schools.ts` :
+
+```ts
+export const SCHOOLS = [
+  { slug: "efap",   name: "EFAP",   tokenEnv: "MM_TOKEN_EFAP" },
+  { slug: "iscom",  name: "ISCOM",  tokenEnv: "MM_TOKEN_ISCOM" },
+  // ... 8 autres
+] as const;
+
+export type SchoolSlug = (typeof SCHOOLS)[number]["slug"];
+```
+
+Au boot, on vérifie que toutes les `tokenEnv` sont définies, sinon on log un warning (l'école sera sautée par le cron mais l'app continuera de tourner pour les écoles configurées).
 
 `.env.example` versionné. En prod : fichier `.env` lu par `docker compose` (`env_file`).
 
 ---
 
-## 11. Tests & gestion d'erreurs
+## 12. Tests & gestion d'erreurs
 
 **Tests (vitest)** :
 - API `/r/:slug` : 302 OK, slug introuvable, archivé, sans version active, insert click correct.
@@ -292,7 +361,7 @@ Latence cible : <50ms.
 
 ---
 
-## 12. Déploiement
+## 13. Déploiement
 
 **Structure repo** :
 
@@ -338,7 +407,7 @@ Latence cible : <50ms.
 
 ---
 
-## 13. Convention docs projet (5 fichiers, suit CLAUDE.md global)
+## 14. Convention docs projet (5 fichiers, suit CLAUDE.md global)
 
 | Fichier | Contenu |
 |---------|---------|
@@ -354,7 +423,7 @@ Latence cible : <50ms.
 
 ---
 
-## 14. Hors scope (pour un V2 si besoin)
+## 15. Hors scope (pour un V2 si besoin)
 
 - Hash IP RGPD-strict (actuellement IP en clair, outil interne).
 - Retention policy `clicks` (purge > 1 an).
