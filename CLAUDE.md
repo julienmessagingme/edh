@@ -69,17 +69,19 @@ NPM : proxy host `edh.messagingme.app` → `http://edh-app:3000`, SSL Let's Encr
 
 ## État courant (2026-04-30)
 
+**Prod live : https://edh.messagingme.app**
+
 | Phase | État |
 |-------|------|
 | 0 — Scaffold Next.js 15 + Tailwind 4 + shadcn + Supabase + tests | ✅ |
-| 1 — Schéma DB (migration 001) | ✅ écrit, ⚠️ **à appliquer** dans Supabase SQL Editor |
+| 1 — Schéma DB (migration 001) | ✅ appliqué |
 | 2 — Auth (login/logout/middleware/seed) + code review | ✅ |
 | 3 — SCHOOLS + sidebar + cookie + code review | ✅ |
 | 4 — Redirect `/r/:slug` + rate-limit + code review | ✅ |
-| 5 — Onglet URLs (CRUD + versioning) | ⏳ pas commencée |
-| 6 — Client messagingme + cron + sync | ⏳ |
-| 7 — Onglet Stats (accordéons + comparaison) | ⏳ |
-| 8 — Dockerfile + docker-compose | ⏳ |
-| 9 — Déploiement VPS + NPM proxy + DNS | ⏳ |
+| 5 — Onglet URLs (CRUD + versioning) | ✅ |
+| 6 — Client messagingme + cron + sync + code review | ✅ |
+| 7 — Onglet Stats (accordéons + comparaison) + code review | ✅ |
+| 8 — Dockerfile + docker-compose | ✅ |
+| 9 — Déploiement VPS + NPM proxy + DNS + Let's Encrypt | ✅ |
 
-Voir `wip.md` pour les détails de ce qui reste.
+Container `edh-app` sur réseau Docker `mcp-robot_default` (NPM), proxy host id 12, cert Let's Encrypt id 13 (expires 2026-07-29). Cron 22:00 Europe/Paris actif. 9 écoles, ~3k occurrences déjà ingérées.

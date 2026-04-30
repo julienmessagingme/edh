@@ -203,6 +203,60 @@ Chaque phase qui touche du code metier passe par une review (agent `feature-dev:
 - IP picking : nouveau helper `getClientIp()` qui priorise `CF-Connecting-IP` puis dernière entrée XFF.
 - Cache lookup : cap 5000 entrées + sweep périodique pour bloquer le DoS via /r/<random>.
 
-## 11. Hors scope (V2)
+## 11. Déploiement prod (effectué 2026-04-30)
+
+URL prod : **https://edh.messagingme.app**
+
+### Workflow standard
+
+```bash
+# Push depuis le main worktree local
+cd /c/Users/julie/EDH && git push origin main
+
+# SSH VPS + rebuild
+ssh -i ~/.ssh/id_ed25519 ubuntu@146.59.233.252
+sudo bash -c 'cd /root/edh && git pull && docker compose up -d --build'
+
+# Vérifier
+sudo docker logs --tail 30 edh-app
+curl -I https://edh.messagingme.app/login
+```
+
+### Stack VPS
+
+- VPS OVH `146.59.233.252`
+- Repo cloné en `/root/edh/` (root-owned, `sudo` requis)
+- `.env` prod en `/root/edh/.env` (chmod 600), contient les 9 `MM_TOKEN_*`, `SUPABASE_SERVICE_ROLE_KEY`, `AUTH_SECRET`, `INTERNAL_API_KEY`
+- Container `edh-app` sur réseaux Docker `edh_default` (compose) + `mcp-robot_default` (external, NPM joint)
+- DNS Cloudflare : A record `edh` → `146.59.233.252`, proxied (orange cloud)
+- NPM proxy host id 12 : `edh.messagingme.app` → `http://edh-app:3000`, SSL Let's Encrypt id 13, force SSL, HTTP/2
+
+### NPM admin via API (sans password)
+
+NPM signe ses JWT avec `/data/keys.json` (RSA private key). On peut minter un token administrateur en lisant ce fichier directement, ce qui évite de devoir taper le password admin pour des opérations SSH-driven (création de proxy host, certs Let's Encrypt, etc.).
+
+```bash
+# 1. Mint un JWT admin (1h TTL)
+JWT=$(ssh ubuntu@146.59.233.252 'sudo docker exec mcp-robot_nginx-proxy-manager_1 sh -c "node -e \"
+const fs=require(\\\"fs\\\"),crypto=require(\\\"crypto\\\");
+const k=JSON.parse(fs.readFileSync(\\\"/data/keys.json\\\",\\\"utf8\\\")).key;
+const now=Math.floor(Date.now()/1000);
+const p={iss:\\\"api\\\",attrs:{id:1},scope:[\\\"user\\\"],jti:crypto.randomBytes(8).toString(\\\"hex\\\"),iat:now,exp:now+3600};
+const b=o=>Buffer.from(JSON.stringify(o)).toString(\\\"base64url\\\");
+const h={alg:\\\"RS256\\\",typ:\\\"JWT\\\"};
+const i=b(h)+\\\".\\\"+b(p);
+const s=crypto.createSign(\\\"RSA-SHA256\\\");s.update(i);
+console.log(i+\\\".\\\"+s.sign(k).toString(\\\"base64url\\\"));
+\""')
+
+# 2. Utiliser ce JWT contre l'API NPM (endpoint sur 127.0.0.1:81 via SSH tunnel ou docker network)
+ssh ubuntu@146.59.233.252 "curl -H 'Authorization: Bearer $JWT' http://127.0.0.1:81/api/users/me"
+```
+
+User admin id 1 = julien@messagingme.fr. Le password n'est PAS modifié par cette procédure.
+
+---
+
+## 12. Hors scope (V2)
 
 Voir `todo.md`.
