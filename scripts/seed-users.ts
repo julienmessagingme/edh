@@ -29,7 +29,7 @@ async function upsertUser(email: string, name: string, password: string) {
 
 async function main() {
   const julienPwd = process.env.SEED_JULIEN_PASSWORD;
-  const edhEmail = process.env.SEED_EDH_EMAIL;
+  const edhEmails = process.env.SEED_EDH_EMAILS;
   const edhPwd = process.env.SEED_EDH_PASSWORD;
 
   if (!julienPwd) {
@@ -39,10 +39,21 @@ async function main() {
 
   await upsertUser("julien@messagingme.fr", "Julien Dumas", julienPwd);
 
-  if (edhEmail && edhPwd) {
-    await upsertUser(edhEmail, "EDH", edhPwd);
+  if (edhEmails && edhPwd) {
+    const emails = edhEmails
+      .split(",")
+      .map((e) => e.trim())
+      .filter(Boolean);
+    for (const email of emails) {
+      // Derive a display name from the email local-part for nicer UI.
+      const localPart = email.split("@")[0] ?? email;
+      const name = `EDH (${localPart})`;
+      await upsertUser(email, name, edhPwd);
+    }
   } else {
-    console.warn("⚠ SEED_EDH_EMAIL or SEED_EDH_PASSWORD not set — skipping EDH user");
+    console.warn(
+      "⚠ SEED_EDH_EMAILS or SEED_EDH_PASSWORD not set — skipping EDH users"
+    );
   }
 }
 
