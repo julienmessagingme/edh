@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import { syncAllSchools, syncSchool } from "@/lib/messagingme/sync";
 import { getSchoolBySlug, getSchoolToken } from "@/lib/schools";
 import { env } from "@/lib/env";
@@ -6,13 +7,24 @@ import { env } from "@/lib/env";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function bearerOk(authHeader: string): boolean {
+  const expected = `Bearer ${env.internalApiKey}`;
+  // timingSafeEqual requires equal length buffers, so we equalise first.
+  // Length-mismatch alone leaks a tiny amount (string is shorter/longer)
+  // but not the byte content of the secret.
+  if (authHeader.length !== expected.length) return false;
+  const a = Buffer.from(authHeader);
+  const b = Buffer.from(expected);
+  return timingSafeEqual(a, b);
+}
+
 // Manual trigger via Bearer token. Useful for ad-hoc runs from cURL or for
 // the future case of an external scheduler taking over from node-cron.
 // The browser UI uses /api/admin/sync (session-auth) instead so that we
 // don't have to ship INTERNAL_API_KEY to the client.
 export async function POST(req: Request) {
   const auth = req.headers.get("authorization") ?? "";
-  if (auth !== `Bearer ${env.internalApiKey}`) {
+  if (!bearerOk(auth)) {
     return NextResponse.json({ error: "unauth" }, { status: 401 });
   }
 

@@ -147,18 +147,25 @@ async function syncEventOccurrences(
       if (occ.id > maxIngested) maxIngested = occ.id;
     }
     if (fresh.length > 0) {
-      const { error } = await sb.from("mm_occurrences").insert(
-        fresh.map((o) => ({
-          id: o.id,
-          school_slug: schoolSlug,
-          event_ns: o.event_ns,
-          user_ns: o.user_ns,
-          text_value: o.text_value,
-          price_value: parsePriceValue(o.price_value),
-          number_value: o.number_value,
-          occurred_at: o.created_at,
-        }))
-      );
+      // Use upsert (not insert) so a transient failure mid-pagination
+      // doesn't leave us unable to resume : retrying re-fetches the same
+      // top-of-page rows, and upsert with ignoreDuplicates makes those
+      // re-inserts a no-op on the (school_slug, id) PK.
+      const { error } = await sb
+        .from("mm_occurrences")
+        .upsert(
+          fresh.map((o) => ({
+            id: o.id,
+            school_slug: schoolSlug,
+            event_ns: o.event_ns,
+            user_ns: o.user_ns,
+            text_value: o.text_value,
+            price_value: parsePriceValue(o.price_value),
+            number_value: o.number_value,
+            occurred_at: o.created_at,
+          })),
+          { onConflict: "school_slug,id", ignoreDuplicates: true }
+        );
       if (error) throw error;
     }
     if (reachedWatermark) break;

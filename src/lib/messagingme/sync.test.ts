@@ -75,7 +75,7 @@ describe("syncSchool watermark", () => {
         }
         if (t === "mm_occurrences") {
           return {
-            insert: (rows: { id: number }[]) => {
+            upsert: (rows: { id: number }[]) => {
               for (const r of rows) inserts.push({ id: r.id });
               return Promise.resolve({ error: null });
             },
