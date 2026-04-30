@@ -33,3 +33,26 @@ export function getSchoolToken(slug: string): string | undefined {
 }
 
 export const DEFAULT_SCHOOL_SLUG = SCHOOLS[0].slug;
+
+/**
+ * Logs a warning for each school whose token env var is unset. Call at boot
+ * (instrumentation) so misconfig surfaces in the logs, not as silent 401s
+ * during a sync run.
+ */
+export function warnMissingSchoolTokens(): string[] {
+  const missing: string[] = [];
+  for (const s of SCHOOLS) {
+    if (!process.env[s.tokenEnv]) {
+      missing.push(s.slug);
+      console.warn(
+        JSON.stringify({
+          level: "warn",
+          msg: "school token missing — sync will skip this school",
+          school: s.slug,
+          envVar: s.tokenEnv,
+        })
+      );
+    }
+  }
+  return missing;
+}

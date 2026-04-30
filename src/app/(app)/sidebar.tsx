@@ -38,6 +38,7 @@ export function Sidebar({
       {schools.map((s) => {
         const active = s.slug === currentSlug;
         const pending = s.slug === pendingSlug;
+        const disabled = pendingSlug !== null;
         return (
           <button
             key={s.slug}
@@ -46,8 +47,8 @@ export function Sidebar({
               active
                 ? "bg-zinc-900 text-white"
                 : "hover:bg-zinc-100 text-zinc-700"
-            } ${pending ? "opacity-60" : ""}`}
-            disabled={pending}
+            } ${pending ? "opacity-60" : ""} ${disabled && !pending ? "opacity-40" : ""}`}
+            disabled={disabled}
           >
             {s.name}
           </button>
