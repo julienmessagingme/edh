@@ -5,6 +5,10 @@ const PUBLIC_PATHS = new Set([
   "/login",
   "/api/auth/login",
   "/api/auth/logout",
+  // /api/cron/sync uses its own Bearer auth (INTERNAL_API_KEY) and must be
+  // callable from outside the browser session. Middleware would otherwise
+  // 307 it to /login.
+  "/api/cron/sync",
 ]);
 
 function isPublic(pathname: string): boolean {
