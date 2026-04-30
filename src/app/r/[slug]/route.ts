@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { lookupSlug } from "@/lib/redirect/lookup";
 import { checkRate } from "@/lib/redirect/rate-limit";
+import { getClientIp } from "@/lib/redirect/client-ip";
 import { getSupabase } from "@/lib/supabase/service";
 
 export const runtime = "nodejs";
@@ -12,8 +13,7 @@ export async function GET(
 ) {
   const { slug } = await ctx.params;
 
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ip = getClientIp(req) ?? "unknown";
   if (!checkRate(ip)) {
     return new NextResponse("Trop de requêtes.", { status: 429 });
   }
