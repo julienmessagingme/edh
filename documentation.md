@@ -159,8 +159,8 @@ mm_sync_state       (school_slug, event_ns) PK, last_occurrence_id, last_run_at,
 | `PUBLIC_BASE_URL` | server only | `https://edh.messagingme.app` (UI base path), `http://localhost:3000` en dev |
 | `DISABLE_CRON` | server only | `1` désactive le cron (utile en dev) |
 | `SEED_JULIEN_PASSWORD` | script seed | mot de passe à hasher pour Julien |
-| `SEED_EDH_EMAIL` | script seed | email du compte EDH (à fournir par Julien) |
-| `SEED_EDH_PASSWORD` | script seed | mot de passe à hasher pour EDH |
+| `SEED_EDH_EMAILS` | script seed | emails EDH séparés par virgule (1 ou plusieurs comptes) |
+| `SEED_EDH_PASSWORD` | script seed | mot de passe à hasher (partagé entre tous les comptes EDH) |
 
 **Local** : `.env.local` (gitignored). **Prod** : fichier `.env` lu par `docker compose` (env_file).
 
