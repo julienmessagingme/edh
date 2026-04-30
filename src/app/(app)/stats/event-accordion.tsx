@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AccordionItem,
   AccordionTrigger,
@@ -50,6 +50,14 @@ export function EventAccordion({
   const [clickSeries, setClickSeries] = useState<DailyPoint[] | null>(null);
   const [opened, setOpened] = useState(false);
 
+  // Separate monotonic tokens for the two series so that selecting a
+  // redirect doesn't invalidate an in-flight occurrences fetch (and vice
+  // versa). Each fetch captures the current value and only writes back if
+  // it still matches when the response arrives, preventing a stale
+  // selectRedirect response from clobbering fresh data after a range change.
+  const seriesToken = useRef(0);
+  const clickToken = useRef(0);
+
   // Initial load when first opened.
   async function loadOnOpen() {
     if (opened) return;
@@ -72,7 +80,8 @@ export function EventAccordion({
   // Reload when range changes (only if already opened).
   useEffect(() => {
     if (!opened) return;
-    let cancelled = false;
+    const sToken = ++seriesToken.current;
+    const cToken = ++clickToken.current;
     setSeries(null);
     setClickSeries(null);
     fetch(
@@ -80,7 +89,7 @@ export function EventAccordion({
     )
       .then((r) => r.json())
       .then((j) => {
-        if (!cancelled) setSeries(j.series ?? []);
+        if (seriesToken.current === sToken) setSeries(j.series ?? []);
       });
     if (selectedId) {
       fetch(
@@ -88,22 +97,20 @@ export function EventAccordion({
       )
         .then((r) => r.json())
         .then((j) => {
-          if (!cancelled) setClickSeries(j.series ?? []);
+          if (clickToken.current === cToken) setClickSeries(j.series ?? []);
         });
     }
-    return () => {
-      cancelled = true;
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to]);
 
   async function selectRedirect(id: string | null) {
     if (!id) return;
     setSelectedId(id);
+    const cToken = ++clickToken.current;
     const j = await fetch(
       `/api/stats/clicks/${id}/daily?from=${from}&to=${to}`
     ).then((r) => r.json());
-    setClickSeries(j.series ?? []);
+    if (clickToken.current === cToken) setClickSeries(j.series ?? []);
   }
 
   const merged = (series ?? []).map((p, i) => ({

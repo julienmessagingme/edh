@@ -39,14 +39,17 @@ export async function GET(req: Request) {
   if (error)
     return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Compute UTC bounds, DST-aware.
+  // Compute UTC bounds, DST-aware. See lib/stats/daily.ts for the rationale
+  // behind the asymmetric offset sampling (T00:00:00Z for from, T12:00:00Z
+  // for to) — this protects against autumn fall-back days losing the last
+  // two hours of the window.
   const fromOffset = formatInTimeZone(
     new Date(`${parsed.data.from}T00:00:00Z`),
     TZ,
     "XXX"
   );
   const toOffset = formatInTimeZone(
-    new Date(`${parsed.data.to}T00:00:00Z`),
+    new Date(`${parsed.data.to}T12:00:00Z`),
     TZ,
     "XXX"
   );

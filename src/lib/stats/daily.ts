@@ -15,16 +15,23 @@ function dayKey(iso: string): string {
 /**
  * Returns the [from 00:00 Paris, to 23:59:59 Paris] window converted to UTC
  * ISO strings, suitable for >= and <= comparisons against `timestamptz`
- * columns. Computes the actual offset for each boundary date so DST
- * boundaries (last Sunday of March / October) don't shift buckets by one
- * day.
+ * columns.
+ *
+ * DST handling : we sample the offset at two different reference points
+ * because spring-forward / fall-back days have a different offset at the
+ * START vs the END of the local day.
+ *   - fromUtc samples at T00:00:00Z : matches the early-morning offset of
+ *     the local day (before any DST transition that happens at 02:00/03:00
+ *     local time).
+ *   - toUtc samples at T12:00:00Z : noon UTC is always already past the
+ *     DST transition for that day in Paris, so the offset reflects the
+ *     end-of-day state. Without this, autumn fall-back days would have
+ *     their last 2 hours excluded from the window (issue caught in code
+ *     review of Phase 7).
  */
 function rangeBoundsUtc(from: string, to: string): { fromUtc: string; toUtc: string } {
-  // formatInTimeZone with the format "XXX" gives us the offset like "+02:00"
-  // for any date in any zone. We compute the offset at midnight on the
-  // boundary day to correctly include the entire local day.
   const fromOffset = formatInTimeZone(new Date(`${from}T00:00:00Z`), TZ, "XXX");
-  const toOffset = formatInTimeZone(new Date(`${to}T00:00:00Z`), TZ, "XXX");
+  const toOffset = formatInTimeZone(new Date(`${to}T12:00:00Z`), TZ, "XXX");
   return {
     fromUtc: `${from}T00:00:00${fromOffset}`,
     toUtc: `${to}T23:59:59.999${toOffset}`,
