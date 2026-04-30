@@ -13,13 +13,20 @@ export async function register() {
     return;
   }
 
-  // node-cron pulls in `worker_threads` and `stream`, which webpack can't
-  // bundle into the instrumentation chunk. We bypass webpack's static
-  // analysis by hiding the module spec behind a runtime-evaluated string,
-  // and use eval'd require so webpack doesn't try to follow it.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const nodeRequire = (0, eval)("require") as (id: string) => any;
-  const cron = nodeRequire("node-cron") as typeof import("node-cron");
+  // node-cron uses CJS internals (worker_threads, stream) that webpack
+  // can't bundle into the instrumentation chunk. We side-step the bundler
+  // by hiding the module specs behind runtime-resolved strings : webpack's
+  // static analysis can't see a literal "module" or "node-cron" reference,
+  // so it leaves both as runtime requires. createRequire works in both CJS
+  // (dev) and ESM (production standalone), unlike eval('require') which
+  // fails in ESM.
+  const moduleSpec = ["m", "o", "d", "u", "l", "e"].join("");
+  const cronSpec = ["node", "-", "cron"].join("");
+  const { createRequire } = (await import(
+    /* webpackIgnore: true */ moduleSpec
+  )) as typeof import("module");
+  const nodeRequire = createRequire(import.meta.url);
+  const cron = nodeRequire(cronSpec) as typeof import("node-cron");
 
   const { syncAllSchools } = await import("@/lib/messagingme/sync");
   const { env } = await import("@/lib/env");
