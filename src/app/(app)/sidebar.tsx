@@ -40,6 +40,11 @@ export function Sidebar({
 
   return (
     <aside className="w-56 bg-white border-r flex flex-col p-4 space-y-1">
+      {schools.length === 0 && (
+        <p className="text-xs text-zinc-500 px-2 py-2">
+          Aucune école assignée. Contactez un administrateur.
+        </p>
+      )}
       {schools.map((s) => {
         const active = s.slug === currentSlug;
         const pending = s.slug === pendingSlug;
