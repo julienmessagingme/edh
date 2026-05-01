@@ -24,16 +24,25 @@ export async function POST(req: Request) {
   const sb = getSupabase();
   const { data: user, error } = await sb
     .from("users")
-    .select("id, email, password_hash, name")
+    .select("id, email, password_hash, name, deactivated_at")
     .eq("email", email)
     .maybeSingle();
 
   const passwordHash = user?.password_hash ?? DUMMY_HASH;
   const ok = await bcrypt.compare(password, passwordHash);
 
-  if (error || !user || !ok) {
+  // Generic 401 for : missing user, wrong password, deactivated user.
+  // We never leak which one it was — an attacker can't probe for valid
+  // emails or for deactivated accounts.
+  if (error || !user || !ok || user.deactivated_at) {
     return NextResponse.json({ error: "invalid credentials" }, { status: 401 });
   }
+
+  // Best-effort update of last_login_at — failure shouldn't block login.
+  void sb
+    .from("users")
+    .update({ last_login_at: new Date().toISOString() })
+    .eq("id", user.id);
 
   const token = await signSession({ userId: user.id, email: user.email });
   const res = NextResponse.json({
