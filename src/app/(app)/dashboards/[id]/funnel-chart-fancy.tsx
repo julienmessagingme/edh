@@ -6,7 +6,7 @@ import {
   FunnelArc,
   FunnelAxis,
   FunnelAxisLabel,
-  ChartTooltip,
+  FunnelAxisLine,
 } from "reaviz";
 import type { ComputedStep } from "@/lib/dashboards/types";
 
@@ -17,8 +17,9 @@ interface FunnelDataPoint {
 
 /**
  * Reaviz-based funnel chart : trapezoidal shape with purple glow.
- * Labels are not rendered next to the funnel — they appear in a tooltip
- * on hover, for a cleaner visual.
+ * Labels axiaux invisibles (`opacity-0`) — la mise en page est conservée
+ * (la zone reste réservée par reaviz) mais aucun texte ne s'affiche. Le
+ * `<title>` SVG du conteneur fournit un tooltip de survol natif.
  */
 export function FancyFunnelChart({ steps }: { steps: ComputedStep[] }) {
   if (steps.length === 0) return null;
@@ -31,7 +32,13 @@ export function FancyFunnelChart({ steps }: { steps: ComputedStep[] }) {
   const height = Math.max(220, steps.length * 60);
 
   return (
-    <div className="w-full" style={{ height }}>
+    <div
+      className="w-full"
+      style={{ height }}
+      title={data
+        .map((d) => `${d.key}: ${d.data.toLocaleString("fr-FR")}`)
+        .join("\n")}
+    >
       <FunnelChart
         id="dashboardFunnel"
         height={height}
@@ -46,27 +53,12 @@ export function FancyFunnelChart({ steps }: { steps: ComputedStep[] }) {
                   blur: 30,
                   color: "#5B14C5",
                 }}
-                tooltip={
-                  <ChartTooltip
-                    content={(d: { x?: string; y?: number; data?: FunnelDataPoint }) => {
-                      const label = d?.x ?? d?.data?.key ?? "";
-                      const count = d?.y ?? d?.data?.data ?? 0;
-                      return (
-                        <div className="bg-white border rounded shadow-md px-3 py-2 text-xs text-zinc-900">
-                          <div className="font-medium">{label}</div>
-                          <div className="tabular-nums">
-                            {count.toLocaleString("fr-FR")}
-                          </div>
-                        </div>
-                      );
-                    }}
-                  />
-                }
               />
             }
             axis={
               <FunnelAxis
-                label={<FunnelAxisLabel fill="transparent" />}
+                label={<FunnelAxisLabel className="opacity-0" />}
+                line={<FunnelAxisLine strokeColor="#7E7E8F75" />}
               />
             }
           />
