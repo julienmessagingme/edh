@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@/lib/supabase/service");
 vi.mock("@/lib/schools/context", () => ({
   getCurrentSchoolSlug: vi.fn().mockResolvedValue("efap"),
+  getCurrentSchoolSlugChecked: vi.fn().mockResolvedValue("efap"),
   SCHOOL_COOKIE_NAME: "edh_school",
 }));
 vi.mock("@/lib/auth/require-user", () => ({
