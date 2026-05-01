@@ -108,6 +108,30 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
   );
 
+  /** Fetch /data — toujours appelé APRÈS un load() ou un PATCH réussi
+   *  pour éviter les races (le PATCH n'est pas encore commit côté DB
+   *  quand /data lit la DB en parallèle). */
+  const fetchData = useCallback(async () => {
+    dataAbort.current?.abort();
+    const ctrl = new AbortController();
+    dataAbort.current = ctrl;
+    setComputing(true);
+    setComputeError(false);
+    try {
+      const r = await fetch(`/api/dashboards/${dashboardId}/data`, {
+        signal: ctrl.signal,
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = (await r.json()) as ComputedDashboardData;
+      setComputed(j);
+    } catch (e) {
+      if ((e as { name?: string }).name === "AbortError") return;
+      setComputeError(true);
+    } finally {
+      if (dataAbort.current === ctrl) setComputing(false);
+    }
+  }, [dashboardId]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -125,56 +149,18 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
       const pJson = (await pRes.json()) as Palette;
       setDashboard(dJson.dashboard);
       setPalette(pJson);
+      // Charge la viz avec l'état DB courant.
+      void fetchData();
     } catch {
       toast.error("Erreur de chargement");
     } finally {
       setLoading(false);
     }
-  }, [dashboardId, router]);
+  }, [dashboardId, router, fetchData]);
 
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    if (!dashboard) return;
-    if (dashboard.steps.length === 0) {
-      setComputed({ from: "", to: "", steps: [] });
-      setComputeError(false);
-      return;
-    }
-    setComputing(true);
-    setComputeError(false);
-    dataAbort.current?.abort();
-    const ctrl = new AbortController();
-    dataAbort.current = ctrl;
-    const timer = setTimeout(async () => {
-      try {
-        const r = await fetch(`/api/dashboards/${dashboardId}/data`, {
-          signal: ctrl.signal,
-        });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const j = (await r.json()) as ComputedDashboardData;
-        setComputed(j);
-      } catch (e) {
-        if ((e as { name?: string }).name === "AbortError") return;
-        setComputeError(true);
-      } finally {
-        if (dataAbort.current === ctrl) setComputing(false);
-      }
-    }, 700);
-    return () => {
-      clearTimeout(timer);
-      ctrl.abort();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    dashboardId,
-    dashboard?.steps,
-    dashboard?.date_preset,
-    dashboard?.date_from,
-    dashboard?.date_to,
-  ]);
 
   const persist = useCallback(
     (body: Record<string, unknown>) => {
@@ -188,6 +174,9 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
             body: JSON.stringify(body),
           });
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          // Refetch /data UNIQUEMENT après que le PATCH ait commité,
+          // pour éviter la race où /data lit l'état d'avant le PATCH.
+          void fetchData();
         } catch {
           toast.error("Erreur d'enregistrement");
         } finally {
@@ -195,7 +184,7 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
         }
       }, 500);
     },
-    [dashboardId]
+    [dashboardId, fetchData]
   );
 
   function updateName(name: string) {
