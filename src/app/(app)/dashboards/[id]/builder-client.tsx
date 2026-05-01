@@ -34,7 +34,11 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { SubNavStats } from "../../sub-nav-stats";
 import { FunnelChart } from "./funnel-chart";
+import { FancyFunnelChart } from "./funnel-chart-fancy";
 import { FunnelTable } from "./funnel-table";
+
+type FunnelView = "bar" | "funnel";
+const VIEW_STORAGE_KEY = "edh_funnel_view";
 import type {
   DashboardWithSteps,
   DashboardStep,
@@ -101,8 +105,23 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
   const [computed, setComputed] = useState<ComputedDashboardData | null>(null);
   const [computing, setComputing] = useState(false);
   const [computeError, setComputeError] = useState(false);
+  const [view, setView] = useState<FunnelView>("bar");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dataAbort = useRef<AbortController | null>(null);
+
+  // Restore the persisted view choice on mount.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(VIEW_STORAGE_KEY);
+    if (stored === "bar" || stored === "funnel") setView(stored);
+  }, []);
+
+  function changeView(next: FunnelView) {
+    setView(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(VIEW_STORAGE_KEY, next);
+    }
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
@@ -512,7 +531,33 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
           </StepsZone>
 
           <section className="bg-white border rounded-lg p-3 min-h-[200px] space-y-3">
-            <h4 className="text-xs uppercase text-zinc-500">Funnel</h4>
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs uppercase text-zinc-500">Funnel</h4>
+              <div className="flex border rounded overflow-hidden text-xs">
+                <button
+                  onClick={() => changeView("bar")}
+                  className={`px-2 py-1 ${
+                    view === "bar"
+                      ? "bg-zinc-900 text-white"
+                      : "bg-white text-zinc-600 hover:bg-zinc-50"
+                  }`}
+                  aria-pressed={view === "bar"}
+                >
+                  Barres
+                </button>
+                <button
+                  onClick={() => changeView("funnel")}
+                  className={`px-2 py-1 border-l ${
+                    view === "funnel"
+                      ? "bg-zinc-900 text-white"
+                      : "bg-white text-zinc-600 hover:bg-zinc-50"
+                  }`}
+                  aria-pressed={view === "funnel"}
+                >
+                  Entonnoir
+                </button>
+              </div>
+            </div>
             {dashboard.steps.length === 0 ? (
               <div className="flex items-center justify-center h-40">
                 <p className="text-zinc-400 text-sm">
@@ -532,7 +577,11 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
                     Période : {computed.from} → {computed.to}
                   </p>
                 )}
-                <FunnelChart steps={computed.steps} />
+                {view === "bar" ? (
+                  <FunnelChart steps={computed.steps} />
+                ) : (
+                  <FancyFunnelChart steps={computed.steps} />
+                )}
                 <FunnelTable steps={computed.steps} />
               </div>
             ) : (
