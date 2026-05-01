@@ -78,11 +78,24 @@ Le `Set-Cookie` du logout mirror les attrs du login (`HttpOnly`, `SameSite=Lax`,
 
 ### 4.1 Liste
 
-`src/lib/schools.ts` exporte la constante `SCHOOLS` (9 écoles). Chaque école a `slug`, `name`, `tokenEnv`. Pour ajouter une école :
+`src/lib/schools.ts` exporte la constante `SCHOOLS` (9 écoles). Chaque école a :
+- `slug` (lowercase, alphanumeric + tirets — utilisé comme `school_slug` en DB)
+- `name` (affiché dans l'UI)
+- `tokenEnv` — nom de l'env var Bearer MessagingMe (ex `MM_TOKEN_EFAP`)
+- `vectorStoreEnv` — nom de l'env var vector store OpenAI (ex `OPENAI_VS_EFAP`)
+- `logo` — URL publique du logo, sert depuis `/public/logos/<slug>.png`
 
-1. Ajouter une entrée à `SCHOOLS`.
-2. Ajouter la variable d'env correspondante (ex `MM_TOKEN_<SLUG>`).
-3. Redéploy.
+Le logo du groupe EDH est exporté séparément via la constante `EDH_GROUP_LOGO` (path `/logos/edh.png`) — affiché en haut à gauche du header de l'app.
+
+Liste actuelle : EFAP, 3WA, Brassart, CESINE, EFJ, ESEC, École Bleue, ICART, IFA.
+
+Pour ajouter une école :
+
+1. Ajouter une entrée à `SCHOOLS` (slug + name + tokenEnv + vectorStoreEnv + logo).
+2. Ajouter les vars d'env (`MM_TOKEN_<SLUG>`, `OPENAI_VS_<SLUG>`).
+3. Déposer le logo en `public/logos/<slug>.png`.
+4. Si la school a un vector store OpenAI, le créer côté OpenAI dashboard.
+5. Redéploy.
 
 ### 4.2 Contexte côté serveur
 
@@ -92,9 +105,9 @@ Le `Set-Cookie` du logout mirror les attrs du login (`HttpOnly`, `SameSite=Lax`,
 
 `POST /api/school` (auth-gated) avec `{ slug }` valide → set le cookie. La sidebar (`src/app/(app)/sidebar.tsx`) appelle cet endpoint puis `router.refresh()`. Pendant le fetch, **toute** la sidebar est désactivée pour empêcher les clics rapides successifs (race condition).
 
-### 4.4 Tokens manquants
+### 4.4 Config manquante
 
-`warnMissingSchoolTokens()` (`src/lib/schools.ts`) loggue un warning JSON pour chaque école sans token au boot. À câbler dans `instrumentation.ts` quand le cron est branché (Phase 6).
+`warnMissingSchoolTokens()` (`src/lib/schools.ts`) loggue un warning JSON au boot pour chaque école sans token MessagingMe (`MM_TOKEN_<SLUG>`) ou sans vector store OpenAI (`OPENAI_VS_<SLUG>`), plus un warning si `OPENAI_API_KEY` est absente. Câblé dans `src/instrumentation.ts` au démarrage du process. Ne bloque pas le boot — chaque école avec config manquante est juste skippée par le sync ou rejette les uploads knowledge avec une erreur claire.
 
 ## 5. Redirect public `/r/:slug`
 
@@ -154,7 +167,9 @@ mm_sync_state       (school_slug, event_ns) PK, last_occurrence_id, last_run_at,
 | `AUTH_SECRET` | server (Edge + Node) | JWT HS256 signing key (64 chars hex) |
 | `INTERNAL_API_KEY` | server only | Bearer pour `/api/cron/sync` manuel (Phase 6) |
 | `MESSAGINGME_API_BASE` | server only | `https://ai.messagingme.app/api` |
-| `MM_TOKEN_<SLUG>` | server only | 9 vars (EFAP, 3WA, BRASSART, CESINE, EFJ, ESEC, ECOLE_BLEUE, ICART, IFA) |
+| `MM_TOKEN_<SLUG>` | server only | 9 vars MessagingMe Bearer (EFAP, 3WA, BRASSART, CESINE, EFJ, ESEC, ECOLE_BLEUE, ICART, IFA) |
+| `OPENAI_API_KEY` | server only | clé OpenAI pour la base de connaissance (Files + Vector Stores API) |
+| `OPENAI_VS_<SLUG>` | server only | 9 vars vector store id par école (même slugs que `MM_TOKEN_*`) |
 | `CRON_TIMEZONE` | server only | `Europe/Paris` |
 | `PUBLIC_BASE_URL` | server only | `https://edh.messagingme.app` (UI base path), `http://localhost:3000` en dev |
 | `DISABLE_CRON` | server only | `1` désactive le cron (utile en dev) |

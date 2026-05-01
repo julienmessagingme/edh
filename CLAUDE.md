@@ -13,11 +13,13 @@ Déployé en Docker sur le VPS OVH `146.59.233.252` derrière NPM, sur le sous-d
 ## Documentation
 
 - **`documentation.md`** — archi, stack, schéma DB, env vars, déploiement, patterns code
-- **`features.md`** — vue produit : URLs + Stats côté utilisateur
-- **`wip.md`** — travail en cours (Phase 5+ pas encore livrée)
-- **`todo.md`** — backlog (RGPD, retention, export, etc.)
-- **`docs/plans/2026-04-30-edh-stats-design.md`** — design doc validé en brainstorming
-- **`docs/plans/2026-04-30-edh-stats-implementation.md`** — plan d'implémentation phase par phase (10 phases, TDD)
+- **`features.md`** — vue produit : URLs + Stats + Base de connaissance côté utilisateur
+- **`wip.md`** — travail en cours
+- **`todo.md`** — backlog (RGPD, retention, export, cleanup orphans OpenAI, etc.)
+- **`docs/plans/2026-04-30-edh-stats-design.md`** — design V1 (URLs + Stats)
+- **`docs/plans/2026-04-30-edh-stats-implementation.md`** — plan V1 (10 phases TDD)
+- **`docs/plans/2026-04-30-knowledge-base-design.md`** — design module Base de connaissance
+- **`docs/plans/2026-04-30-knowledge-base-implementation.md`** — plan module Base de connaissance
 
 ## Commandes essentielles
 
@@ -44,33 +46,36 @@ Si Claude Code démarre dans `.claude/worktrees/<name>/`, **NE PAS** y faire d'e
   git -c user.email="julien@messagingme.fr" -c user.name="Julien Dumas" commit -m "..."
   ```
 
-## Déploiement (Phase 9 — non encore exécutée)
+## Déploiement
 
 ```bash
 # en local
 git push origin main
 
-# sur le VPS
-ssh -i ~/.ssh/id_ed25519 ubuntu@146.59.233.252
-cd /root/edh && git pull && sudo docker compose up -d --build
-sudo docker logs -f edh-app
+# sur le VPS (un-liner)
+ssh -i ~/.ssh/id_ed25519 ubuntu@146.59.233.252 \
+  "sudo bash -c 'cd /root/edh && git pull && docker compose up -d --build'"
+
+# vérifier les logs
+ssh -i ~/.ssh/id_ed25519 ubuntu@146.59.233.252 "sudo docker logs --tail 30 edh-app"
 ```
 
 DNS : A record `edh` → `146.59.233.252` (Cloudflare proxied, cohérent avec `mieuxassure`).
 
-NPM : proxy host `edh.messagingme.app` → `http://edh-app:3000`, SSL Let's Encrypt.
+NPM : proxy host id 12 `edh.messagingme.app` → `http://edh-app:3000`, SSL Let's Encrypt id 13 (renouvellement auto, expires 2026-07-29).
 
 ## Règles spécifiques au projet
 
 - **Le slug d'une URL est immuable** une fois créé (template WhatsApp validé Meta) — modifier la destination crée une nouvelle version, le slug ne change jamais.
 - **Migrations SQL appliquées à la main** via Supabase SQL Editor (pas de CLI push).
 - **`/r/:slug` doit toujours marcher** même sans auth, même si la DB est partiellement down (503 propre, jamais 500 leak).
-- **Cron 22:00 Europe/Paris** (Phase 6) tournera dans le process Next.js. `DISABLE_CRON=1` pour le désactiver en dev.
-- **9 écoles** : EFAP, 3WA, Brassart, CESINE, EFJ, ESEC, École Bleue, ICART, IFA. Bearer tokens en env vars (`MM_TOKEN_<SLUG>`). Ajouter une école = redeploy.
+- **Cron 22:00 Europe/Paris** dans le process Next.js (sync messagingme séquentiel sur les 9 écoles, watermark `last_occurrence_id`). `DISABLE_CRON=1` pour le désactiver en dev.
+- **9 écoles** : EFAP, 3WA, Brassart, CESINE, EFJ, ESEC, École Bleue, ICART, IFA. Bearer MessagingMe en env vars (`MM_TOKEN_<SLUG>`), vector store OpenAI en env vars (`OPENAI_VS_<SLUG>`), logos en `public/logos/<slug>.png`. Ajouter une école = mettre à jour la constante SCHOOLS + 2 env vars + déposer le logo + redeploy.
+- **Base de connaissance** : OpenAI = source de vérité (vector store par école), Supabase = métadata. DELETE flow : best-effort cleanup OpenAI + DB delete inconditionnel (orphan files acceptés plutôt que ghost rows).
 - **Pas de RLS Supabase.** L'app utilise le service-role server-side uniquement, jamais d'accès DB depuis le client.
 - **UI 100% française** dans les strings affichées.
 
-## État courant (2026-04-30)
+## État courant (2026-05-01)
 
 **Prod live : https://edh.messagingme.app**
 
@@ -86,6 +91,7 @@ NPM : proxy host `edh.messagingme.app` → `http://edh-app:3000`, SSL Let's Encr
 | 7 — Onglet Stats (accordéons + comparaison) + code review | ✅ |
 | 8 — Dockerfile + docker-compose | ✅ |
 | 9 — Déploiement VPS + NPM proxy + DNS + Let's Encrypt | ✅ |
-| 10 — Module Base de connaissance (4 modes upload + thèmes + Excel SSE) | ✅ |
+| 10 — Module Base de connaissance (4 modes upload + thèmes + Excel SSE) + code review | ✅ |
+| 11 — Rename EJF→EFJ (migration 003) + logos d'école / EDH groupe dans header + sidebar | ✅ |
 
-Container `edh-app` sur réseau Docker `mcp-robot_default` (NPM), proxy host id 12, cert Let's Encrypt id 13 (expires 2026-07-29). Cron 22:00 Europe/Paris actif. 9 écoles, ~3k occurrences déjà ingérées. 9 vector stores OpenAI configurés (un par école) pour la base de connaissance.
+Container `edh-app` sur réseau Docker `mcp-robot_default` (NPM), proxy host id 12, cert Let's Encrypt id 13 (expires 2026-07-29). Cron 22:00 Europe/Paris actif. 9 écoles avec leur logo, ~3k occurrences messagingme ingérées. 9 vector stores OpenAI configurés (un par école) pour la base de connaissance. Logos servis depuis `/public/logos/<slug>.png` + `/logos/edh.png` (groupe), middleware whitelist `/logos/`.
