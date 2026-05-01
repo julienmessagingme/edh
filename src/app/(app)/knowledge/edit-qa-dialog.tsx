@@ -113,7 +113,13 @@ export function EditQaDialog({
                 onValueChange={(v) => setThemeId(v === NONE_VALUE ? null : v)}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Aucun" />
+                  <SelectValue placeholder="Aucun">
+                    {(v: string | null) =>
+                      v == null || v === NONE_VALUE
+                        ? "— Aucun —"
+                        : (themes.find((t) => t.id === v)?.name ?? v)
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NONE_VALUE}>— Aucun —</SelectItem>
@@ -132,7 +138,13 @@ export function EditQaDialog({
                 onValueChange={(v) => setSubthemeId(v === NONE_VALUE ? null : v)}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Aucun" />
+                  <SelectValue placeholder="Aucun">
+                    {(v: string | null) =>
+                      v == null || v === NONE_VALUE
+                        ? "— Aucun —"
+                        : (subthemes.find((s) => s.id === v)?.name ?? v)
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NONE_VALUE}>— Aucun —</SelectItem>

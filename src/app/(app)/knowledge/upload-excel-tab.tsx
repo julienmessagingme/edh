@@ -303,7 +303,7 @@ export function UploadExcelTab({ onUploaded }: { onUploaded: () => void }) {
                 onValueChange={(v) => setActiveSheet(v)}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue>{(v: string | null) => v ?? ""}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {sheets.map((s) => (
@@ -432,6 +432,15 @@ function ColumnSelect({
   maxCols: number;
   required?: boolean;
 }) {
+  /**
+   * Display label for column index `i` : either the header cell (if there
+   * are headers) or a generic "Colonne A/B/C…" fallback.
+   */
+  const labelForCol = (i: number) =>
+    row && row[i] != null && String(row[i]).length > 0
+      ? String(row[i]).substring(0, 60)
+      : `Colonne ${String.fromCharCode(65 + i)}`;
+
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
@@ -446,15 +455,21 @@ function ColumnSelect({
         }}
       >
         <SelectTrigger>
-          <SelectValue placeholder={required ? "À choisir" : "Aucune"} />
+          <SelectValue placeholder={required ? "À choisir" : "Aucune"}>
+            {(v: string | null) => {
+              if (v == null || v === NONE_VALUE) {
+                return required ? "À choisir" : "— Aucune —";
+              }
+              const idx = parseInt(v, 10);
+              return Number.isNaN(idx) ? v : labelForCol(idx);
+            }}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           {!required && <SelectItem value={NONE_VALUE}>— Aucune —</SelectItem>}
           {Array.from({ length: maxCols }).map((_, i) => (
             <SelectItem key={i} value={String(i)}>
-              {row && row[i] != null && String(row[i]).length > 0
-                ? String(row[i]).substring(0, 60)
-                : `Colonne ${String.fromCharCode(65 + i)}`}
+              {labelForCol(i)}
             </SelectItem>
           ))}
         </SelectContent>

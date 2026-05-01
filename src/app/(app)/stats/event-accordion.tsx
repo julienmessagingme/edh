@@ -184,7 +184,13 @@ export function EventAccordion({
                 onValueChange={selectRedirect}
               >
                 <SelectTrigger className="w-72">
-                  <SelectValue placeholder="Sélectionner une URL trackée" />
+                  <SelectValue placeholder="Sélectionner une URL trackée">
+                    {(v: string | null) =>
+                      v
+                        ? (redirects.find((r) => r.id === v)?.name ?? v)
+                        : "Sélectionner une URL trackée"
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {redirects.length === 0 ? (
