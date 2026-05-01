@@ -1,12 +1,13 @@
 # CLAUDE.md — EDH Stats
 
-Dashboard multi-écoles pour le client EDH. Trois fonctions :
+Dashboard multi-écoles pour le client EDH. Quatre fonctions :
 
 1. **URLs trackées** pour templates WhatsApp — slug court → redirect 302 server-side, comptage des clics.
 2. **Stats** — récupère les custom events via l'API messagingme et permet de comparer leur volumétrie aux clics URL (ratios).
-3. **Base de connaissance** — alimente le vector store OpenAI de chaque école (4 modes : fichier PDF/TXT, saisie texte, Q/R structurées avec thèmes, import Excel en masse). Gère un vector store par école.
+3. **Mes tableaux** — chaque user UI construit ses propres funnels par école (drag-and-drop d'events MM + clics URL, viz bar chart recharts), persistés en DB et privés.
+4. **Base de connaissance** — alimente le vector store OpenAI de chaque école (4 modes : fichier PDF/TXT, saisie texte, Q/R structurées avec thèmes, import Excel en masse). Gère un vector store par école.
 
-Header niveau 1 : `[Stats] [Base de connaissance]`. Sous-nav `[URLs] [Stats]` quand `Stats` est actif.
+Header niveau 1 : `[Stats] [Base de connaissance]`. Sous-nav `[URLs] [Stats] [Mes tableaux]` quand `Stats` est actif.
 
 Déployé en Docker sur le VPS OVH `146.59.233.252` derrière NPM, sur le sous-domaine **`edh.messagingme.app`**.
 
@@ -97,4 +98,4 @@ NPM : proxy host id 12 `edh.messagingme.app` → `http://edh-app:3000`, SSL Let'
 | 11 — Rename EJF→EFJ (migration 003) + logos d'école / EDH groupe dans header + sidebar | ✅ |
 | 12 — Module Mes tableaux (custom dashboards funnel + dnd-kit + recharts) | ✅ |
 
-Container `edh-app` sur réseau Docker `mcp-robot_default` (NPM), proxy host id 12, cert Let's Encrypt id 13 (expires 2026-07-29). Cron 22:00 Europe/Paris actif. 9 écoles avec leur logo, ~3k occurrences messagingme ingérées. 9 vector stores OpenAI configurés (un par école) pour la base de connaissance. Logos servis depuis `/public/logos/<slug>.png` + `/logos/edh.png` (groupe), middleware whitelist `/logos/`. Module Mes tableaux : sub-nav 3 entrées (URLs / Stats / Mes tableaux), tableaux par-école et privés (`created_by`), drag-and-drop palette → funnel, auto-save 500ms, viz BarChart horizontal recharts.
+Container `edh-app` sur réseau Docker `mcp-robot_default` (NPM), proxy host id 12, cert Let's Encrypt id 13 (expires 2026-07-29). Cron 22:00 Europe/Paris actif. 9 écoles avec leur logo, ~3k occurrences messagingme ingérées. 9 vector stores OpenAI configurés (un par école) pour la base de connaissance. Logos servis depuis `/public/logos/<slug>.png` + `/logos/edh.png` (groupe), middleware whitelist `/logos/`. Module Mes tableaux : tables `dashboards` + `dashboard_steps`, auto-save 500ms via PATCH atomique des steps, lib drag-and-drop `@dnd-kit/core`+`@dnd-kit/sortable` (~12kB).
