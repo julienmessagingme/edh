@@ -65,19 +65,30 @@ export function HistoryList() {
 
   // Poll for items still indexing — re-fetch every 5 s as long as at least
   // one item < 60 s old has status='in_progress'. Stops automatically once
-  // everything settles.
+  // everything settles. Single ref-guarded interval : we always clear the
+  // previous timer before deciding whether to schedule a new one. This
+  // avoids stacked intervals when filters change concurrently with a poll
+  // tick.
   const pollerRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
-    if (pollerRef.current) clearInterval(pollerRef.current);
+    if (pollerRef.current) {
+      clearInterval(pollerRef.current);
+      pollerRef.current = null;
+    }
     const hasFresh = items.some((it) => {
       if (it.status === "completed") return false;
       const age = Date.now() - new Date(it.uploaded_at).getTime();
       return age < 60_000;
     });
     if (!hasFresh) return;
-    pollerRef.current = setInterval(() => load(), 5000);
+    pollerRef.current = setInterval(() => {
+      void load();
+    }, 5000);
     return () => {
-      if (pollerRef.current) clearInterval(pollerRef.current);
+      if (pollerRef.current) {
+        clearInterval(pollerRef.current);
+        pollerRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);

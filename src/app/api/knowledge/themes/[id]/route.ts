@@ -11,12 +11,16 @@ const PatchBody = z.object({
 });
 
 /**
- * Verifies the theme belongs to the current school. Returns the row for
- * convenience or null if not found / not owned.
+ * Verifies the theme belongs to the given school. The slug is passed in
+ * (rather than re-read from the cookie) so the caller can ensure a single
+ * snapshot of the current school is used for the whole request, avoiding
+ * a TOCTOU window if multiple ownership checks happen in sequence.
  */
-async function findOwnedTheme(id: string): Promise<{ id: string } | null> {
+async function findOwnedTheme(
+  id: string,
+  schoolSlug: string
+): Promise<{ id: string } | null> {
   const sb = getSupabase();
-  const schoolSlug = await getCurrentSchoolSlug();
   const { data } = await sb
     .from("knowledge_themes")
     .select("id, school_slug")
@@ -42,7 +46,8 @@ export async function PATCH(
     return NextResponse.json({ error: "invalid body" }, { status: 400 });
   }
 
-  const owned = await findOwnedTheme(id);
+  const schoolSlug = await getCurrentSchoolSlug();
+  const owned = await findOwnedTheme(id, schoolSlug);
   if (!owned) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const { error } = await getSupabase()
@@ -73,7 +78,8 @@ export async function DELETE(
   }
 
   const { id } = await ctx.params;
-  const owned = await findOwnedTheme(id);
+  const schoolSlug = await getCurrentSchoolSlug();
+  const owned = await findOwnedTheme(id, schoolSlug);
   if (!owned) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   // Cascade : the FK on knowledge_subthemes.theme_id is ON DELETE CASCADE,

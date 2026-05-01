@@ -11,9 +11,18 @@ const PatchBody = z.object({
   themeId: z.string().uuid().nullable().optional(),
 });
 
-async function findOwnedSubtheme(id: string): Promise<{ id: string } | null> {
+/**
+ * Verifies the subtheme belongs to the given school. The school slug is
+ * passed in (rather than re-read from the cookie inside) so the caller
+ * can ensure the same value is used across multiple ownership checks in
+ * a single request — avoids a TOCTOU window if the cookie changed
+ * mid-request.
+ */
+async function findOwnedSubtheme(
+  id: string,
+  schoolSlug: string
+): Promise<{ id: string } | null> {
   const sb = getSupabase();
-  const schoolSlug = await getCurrentSchoolSlug();
   const { data } = await sb
     .from("knowledge_subthemes")
     .select("id, school_slug")
@@ -39,10 +48,15 @@ export async function PATCH(
     return NextResponse.json({ error: "invalid body" }, { status: 400 });
   }
 
-  const owned = await findOwnedSubtheme(id);
+  // Read the school slug ONCE at the top : both the subtheme ownership
+  // check and the (optional) theme ownership check must run against the
+  // same school to be authoritative. Calling getCurrentSchoolSlug() twice
+  // would open a TOCTOU window if the cookie flips between the two calls.
+  const schoolSlug = await getCurrentSchoolSlug();
+
+  const owned = await findOwnedSubtheme(id, schoolSlug);
   if (!owned) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  const schoolSlug = await getCurrentSchoolSlug();
   const sb = getSupabase();
 
   // If themeId is being set, validate it belongs to the same school.
@@ -92,7 +106,8 @@ export async function DELETE(
   }
 
   const { id } = await ctx.params;
-  const owned = await findOwnedSubtheme(id);
+  const schoolSlug = await getCurrentSchoolSlug();
+  const owned = await findOwnedSubtheme(id, schoolSlug);
   if (!owned) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   // FK on knowledge_items.subtheme_id is ON DELETE SET NULL — items lose

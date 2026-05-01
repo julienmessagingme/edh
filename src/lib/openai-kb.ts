@@ -27,8 +27,15 @@ const VS_BASE = "https://api.openai.com/v1/vector_stores";
 const BETA_HEADER = "assistants=v2";
 
 function vsHeaders(): Record<string, string> {
+  // Mirror getOpenAI()'s precondition : the SDK throws at instantiation
+  // if the key is missing, but the fetch-based VS calls don't go through
+  // it. Failing here gives a clear stack trace at the boundary instead
+  // of a remote 401 mid-upload.
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY not set");
+  }
   return {
-    Authorization: `Bearer ${process.env.OPENAI_API_KEY ?? ""}`,
+    Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
     "OpenAI-Beta": BETA_HEADER,
   };
 }

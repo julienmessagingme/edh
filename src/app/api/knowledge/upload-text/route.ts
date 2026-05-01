@@ -92,6 +92,15 @@ export async function POST(req: Request) {
       () => undefined
     );
     void deleteOpenAIFile(uploaded.fileId).catch(() => undefined);
+    console.error(
+      JSON.stringify({
+        level: "error",
+        action: "knowledge_upload_text",
+        msg: "DB insert failed after OpenAI upload — attempted rollback",
+        school: schoolSlug,
+        err: error.message,
+      })
+    );
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 

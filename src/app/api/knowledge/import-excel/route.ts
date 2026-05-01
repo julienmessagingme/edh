@@ -2,7 +2,7 @@ import { z } from "zod";
 import { getSupabase } from "@/lib/supabase/service";
 import { getCurrentSchoolSlug } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
-import { uploadToVectorStore } from "@/lib/openai-kb";
+import { uploadToVectorStore, deleteFromVectorStore, deleteOpenAIFile } from "@/lib/openai-kb";
 import { createTxtFromQA, buildQaFileName } from "@/lib/knowledge/file-gen";
 import { findQaDuplicate } from "@/lib/knowledge/qa-shared";
 
@@ -215,7 +215,19 @@ export async function POST(req: Request) {
                 status: uploaded.status,
                 uploaded_by: user.userId,
               });
-              if (error) throw new Error(error.message);
+              if (error) {
+                // DB insert failed AFTER the OpenAI upload succeeded. Roll
+                // back the OpenAI side so we don't accumulate orphans, then
+                // bail out of the retry loop : retrying would just upload
+                // a fresh OpenAI file each time without ever fixing the
+                // underlying DB issue. Mark as a "db_error" so the catch
+                // below knows not to retry.
+                void deleteFromVectorStore(schoolSlug, uploaded.vectorStoreFileId).catch(
+                  () => undefined
+                );
+                void deleteOpenAIFile(uploaded.fileId).catch(() => undefined);
+                throw new Error(`db_error: ${error.message}`);
+              }
 
               succeeded = true;
               if (attempt > 1) {
@@ -229,8 +241,13 @@ export async function POST(req: Request) {
             } catch (err) {
               lastError = err instanceof Error ? err.message : String(err);
 
-              // Don't retry duplicates — they're deterministic.
+              // Don't retry deterministic failures :
+              //   - duplicates : retry will hit the same dup
+              //   - db_error : OpenAI was already rolled back inside the
+              //     try block, and another retry would just upload a new
+              //     OpenAI file we'd have to roll back again
               if (lastError.startsWith("Doublon")) break;
+              if (lastError.startsWith("db_error:")) break;
 
               if (attempt < MAX_RETRIES) {
                 send({

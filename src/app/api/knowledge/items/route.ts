@@ -20,10 +20,13 @@ const SELECT_COLS =
 /**
  * Escapes user input before injecting into a supabase .or() filter. Commas
  * and parens have meaning in PostgREST's `or` syntax — without escaping a
- * search for "1,2" would be parsed as 2 filter clauses.
+ * search for "1,2" would be parsed as 2 filter clauses. The dot is also
+ * a column-qualifier separator (`table.column`), so a search like "tarifs."
+ * (with the trailing period found in any French question) would otherwise
+ * produce a malformed query and a 400 from PostgREST.
  */
 function escapeForOr(s: string): string {
-  return s.replace(/[,()\\]/g, "\\$&");
+  return s.replace(/[,()\\.]/g, "\\$&");
 }
 
 export async function GET(req: Request) {
