@@ -25,12 +25,15 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { SubNavStats } from "../../sub-nav-stats";
+import { FunnelChart } from "./funnel-chart";
+import { FunnelTable } from "./funnel-table";
 import type {
   DashboardWithSteps,
   DashboardStep,
   Palette,
   PaletteItem,
   DatePreset,
+  ComputedDashboardData,
 } from "@/lib/dashboards/types";
 
 const PRESETS: { key: DatePreset; label: string }[] = [
@@ -66,7 +69,11 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
     kind: "palette" | "step";
     label: string;
   } | null>(null);
+  const [computed, setComputed] = useState<ComputedDashboardData | null>(null);
+  const [computing, setComputing] = useState(false);
+  const [computeError, setComputeError] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dataAbort = useRef<AbortController | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
@@ -99,6 +106,48 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Fetch computed data whenever steps or date range change. Uses a 700ms
+  // debounce so we wait for the auto-save (500ms) to land before reading.
+  useEffect(() => {
+    if (!dashboard) return;
+    if (dashboard.steps.length === 0) {
+      setComputed({ from: "", to: "", steps: [] });
+      setComputeError(false);
+      return;
+    }
+    setComputing(true);
+    setComputeError(false);
+    dataAbort.current?.abort();
+    const ctrl = new AbortController();
+    dataAbort.current = ctrl;
+    const timer = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/dashboards/${dashboardId}/data`, {
+          signal: ctrl.signal,
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = (await r.json()) as ComputedDashboardData;
+        setComputed(j);
+      } catch (e) {
+        if ((e as { name?: string }).name === "AbortError") return;
+        setComputeError(true);
+      } finally {
+        if (dataAbort.current === ctrl) setComputing(false);
+      }
+    }, 700);
+    return () => {
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    dashboardId,
+    dashboard?.steps,
+    dashboard?.date_preset,
+    dashboard?.date_from,
+    dashboard?.date_to,
+  ]);
 
   const persist = useCallback(
     (body: Record<string, unknown>) => {
@@ -393,11 +442,33 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
             </SortableContext>
           </StepsZone>
 
-          <section className="bg-white border rounded-lg p-3 min-h-[200px] flex items-center justify-center">
-            <p className="text-zinc-400 text-sm">
-              La visualisation s&apos;affichera ici quand au moins une étape sera
-              ajoutée.
-            </p>
+          <section className="bg-white border rounded-lg p-3 min-h-[200px] space-y-3">
+            <h4 className="text-xs uppercase text-zinc-500">Funnel</h4>
+            {dashboard.steps.length === 0 ? (
+              <div className="flex items-center justify-center h-40">
+                <p className="text-zinc-400 text-sm">
+                  Ajoutez au moins une étape pour voir la visualisation.
+                </p>
+              </div>
+            ) : computing && !computed ? (
+              <p className="text-zinc-500 text-sm">Chargement…</p>
+            ) : computeError ? (
+              <p className="text-red-600 text-sm">
+                Impossible de charger les données.
+              </p>
+            ) : computed && computed.steps.length > 0 ? (
+              <div className="space-y-4">
+                {(computed.from || computed.to) && (
+                  <p className="text-xs text-zinc-500">
+                    Période : {computed.from} → {computed.to}
+                  </p>
+                )}
+                <FunnelChart steps={computed.steps} />
+                <FunnelTable steps={computed.steps} />
+              </div>
+            ) : (
+              <p className="text-zinc-500 text-sm">Chargement…</p>
+            )}
           </section>
         </div>
       </div>
