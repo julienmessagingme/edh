@@ -243,14 +243,17 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
     }
   }
 
-  const labelLookup = useCallback(
-    (s: DashboardStep): string => {
-      if (!palette) return "…";
+  const lookupStep = useCallback(
+    (s: DashboardStep): { label: string; available: boolean } => {
+      if (!palette) return { label: "…", available: true };
       const refId =
         s.step_type === "mm_event" ? s.event_ns! : s.redirect_event_id!;
       const list =
         s.step_type === "mm_event" ? palette.mmEvents : palette.redirectEvents;
-      return list.find((p) => p.ref_id === refId)?.label ?? "(indisponible)";
+      const found = list.find((p) => p.ref_id === refId);
+      return found
+        ? { label: found.label, available: true }
+        : { label: "(indisponible)", available: false };
     },
     [palette]
   );
@@ -272,7 +275,7 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
       if (p) setActiveDrag({ kind: "palette", label: p.label });
     } else {
       const step = dashboard?.steps.find((s) => s.id === id);
-      if (step) setActiveDrag({ kind: "step", label: labelLookup(step) });
+      if (step) setActiveDrag({ kind: "step", label: lookupStep(step).label });
     }
   }
 
@@ -428,15 +431,19 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
                 </p>
               ) : (
                 <ol className="space-y-2">
-                  {dashboard.steps.map((s, i) => (
-                    <SortableStep
-                      key={s.id}
-                      step={s}
-                      index={i}
-                      label={labelLookup(s)}
-                      onRemove={() => removeStep(i)}
-                    />
-                  ))}
+                  {dashboard.steps.map((s, i) => {
+                    const meta = lookupStep(s);
+                    return (
+                      <SortableStep
+                        key={s.id}
+                        step={s}
+                        index={i}
+                        label={meta.label}
+                        available={meta.available}
+                        onRemove={() => removeStep(i)}
+                      />
+                    );
+                  })}
                 </ol>
               )}
             </SortableContext>
@@ -544,11 +551,13 @@ function SortableStep({
   step,
   index,
   label,
+  available,
   onRemove,
 }: {
   step: DashboardStep;
   index: number;
   label: string;
+  available: boolean;
   onRemove: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -562,7 +571,10 @@ function SortableStep({
     <li
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-2 px-3 py-2 bg-zinc-50 rounded border"
+      className={`flex items-center gap-2 px-3 py-2 bg-zinc-50 rounded border ${
+        !available ? "opacity-60" : ""
+      }`}
+      title={!available ? "Cet event n'existe plus pour cette école" : undefined}
     >
       <button
         {...attributes}
@@ -574,6 +586,11 @@ function SortableStep({
       </button>
       <span className="text-xs text-zinc-400 w-5">{index + 1}.</span>
       <span className="flex-1 truncate text-sm">{label}</span>
+      {!available && (
+        <span className="text-xs text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+          indisponible
+        </span>
+      )}
       <span className="text-xs text-zinc-400">
         {step.step_type === "mm_event" ? "MM" : "URL"}
       </span>
