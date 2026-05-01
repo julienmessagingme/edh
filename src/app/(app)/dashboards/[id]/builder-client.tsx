@@ -6,7 +6,24 @@ import { toast, Toaster } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Trash2, X, Plus } from "lucide-react";
+import { Trash2, X, Plus, GripVertical } from "lucide-react";
+import {
+  DndContext,
+  DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDraggable,
+  useDroppable,
+  DragOverlay,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { SubNavStats } from "../../sub-nav-stats";
 import type {
   DashboardWithSteps,
@@ -36,10 +53,8 @@ function stepsToPending(steps: DashboardStep[]): PendingStep[] {
   );
 }
 
-function refIdOf(s: DashboardStep | PendingStep | PaletteItem): string {
-  if ("ref_id" in s) return s.ref_id;
-  return s.step_type === "mm_event" ? s.event_ns! : s.redirect_event_id!;
-}
+const STEPS_ZONE_ID = "steps-zone";
+const PALETTE_PREFIX = "palette:";
 
 export function BuilderClient({ dashboardId }: { dashboardId: string }) {
   const router = useRouter();
@@ -47,7 +62,15 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
   const [palette, setPalette] = useState<Palette | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [activeDrag, setActiveDrag] = useState<{
+    kind: "palette" | "step";
+    label: string;
+  } | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,7 +133,6 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
         ? {
             ...d,
             date_preset: preset,
-            // Clear custom dates when switching to a preset
             date_from: preset === "custom" ? d.date_from : null,
             date_to: preset === "custom" ? d.date_to : null,
           }
@@ -147,7 +169,7 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
     setSteps((prev) => [
       ...prev,
       {
-        id: `tmp-${Date.now()}`,
+        id: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         position: prev.length,
         step_type: p.step_type,
         event_ns: p.step_type === "mm_event" ? p.ref_id : null,
@@ -172,17 +194,63 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
     }
   }
 
-  // Lookup helpers : palette → label
   const labelLookup = useCallback(
     (s: DashboardStep): string => {
       if (!palette) return "…";
-      const refId = refIdOf(s);
+      const refId =
+        s.step_type === "mm_event" ? s.event_ns! : s.redirect_event_id!;
       const list =
         s.step_type === "mm_event" ? palette.mmEvents : palette.redirectEvents;
       return list.find((p) => p.ref_id === refId)?.label ?? "(indisponible)";
     },
     [palette]
   );
+
+  function paletteItemFor(refId: string): PaletteItem | null {
+    if (!palette) return null;
+    return (
+      palette.mmEvents.find((p) => p.ref_id === refId) ??
+      palette.redirectEvents.find((p) => p.ref_id === refId) ??
+      null
+    );
+  }
+
+  function handleDragStart(e: { active: { id: string | number; data: { current?: unknown } } }) {
+    const id = String(e.active.id);
+    if (id.startsWith(PALETTE_PREFIX)) {
+      const refId = id.slice(PALETTE_PREFIX.length);
+      const p = paletteItemFor(refId);
+      if (p) setActiveDrag({ kind: "palette", label: p.label });
+    } else {
+      const step = dashboard?.steps.find((s) => s.id === id);
+      if (step) setActiveDrag({ kind: "step", label: labelLookup(step) });
+    }
+  }
+
+  function handleDragEnd(e: DragEndEvent) {
+    setActiveDrag(null);
+    const activeId = String(e.active.id);
+    const overId = e.over ? String(e.over.id) : null;
+    if (!overId) return;
+
+    // Case 1 : drag from palette
+    if (activeId.startsWith(PALETTE_PREFIX)) {
+      const refId = activeId.slice(PALETTE_PREFIX.length);
+      const p = paletteItemFor(refId);
+      if (!p) return;
+      addFromPalette(p);
+      return;
+    }
+
+    // Case 2 : reorder existing steps
+    if (activeId === overId) return;
+    setSteps((prev) => {
+      const oldIdx = prev.findIndex((s) => s.id === activeId);
+      const newIdx = prev.findIndex((s) => s.id === overId);
+      if (oldIdx < 0 || newIdx < 0) return prev;
+      return arrayMove(prev, oldIdx, newIdx);
+    });
+  }
 
   if (loading) {
     return (
@@ -196,142 +264,152 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
   }
   if (!dashboard || !palette) return null;
 
+  const stepIds = dashboard.steps.map((s) => s.id);
+
   return (
-    <div className="space-y-4">
-      <Toaster richColors position="top-right" />
-      <header className="flex justify-between items-center">
-        <SubNavStats />
-        <div className="flex items-center gap-3">
-          {saving && <span className="text-xs text-zinc-500">Enregistrement…</span>}
-          <Button variant="outline" onClick={deleteDashboard}>
-            <Trash2 className="h-4 w-4 mr-1" /> Supprimer
-          </Button>
-        </div>
-      </header>
-
-      {/* Top bar : name + dates */}
-      <div className="bg-white border rounded-lg p-4 space-y-3">
-        <Input
-          value={dashboard.name}
-          onChange={(e) => updateName(e.target.value)}
-          className="text-lg font-semibold"
-          placeholder="Nom du tableau"
-        />
-        <div className="flex items-end gap-2 flex-wrap">
-          {PRESETS.map((p) => (
-            <Button
-              key={p.key}
-              size="sm"
-              variant={dashboard.date_preset === p.key ? "default" : "outline"}
-              onClick={() => updatePreset(p.key)}
-            >
-              {p.label}
+    <DndContext
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => setActiveDrag(null)}
+    >
+      <div className="space-y-4">
+        <Toaster richColors position="top-right" />
+        <header className="flex justify-between items-center">
+          <SubNavStats />
+          <div className="flex items-center gap-3">
+            {saving && (
+              <span className="text-xs text-zinc-500">Enregistrement…</span>
+            )}
+            <Button variant="outline" onClick={deleteDashboard}>
+              <Trash2 className="h-4 w-4 mr-1" /> Supprimer
             </Button>
-          ))}
-          <span className="text-zinc-400">·</span>
-          <div className="space-y-1">
-            <Label htmlFor="from" className="text-xs">
-              Du
-            </Label>
-            <Input
-              id="from"
-              type="date"
-              value={dashboard.date_from ?? ""}
-              onChange={(e) => updateCustomDate("date_from", e.target.value)}
-              className="w-40"
-            />
           </div>
-          <div className="space-y-1">
-            <Label htmlFor="to" className="text-xs">
-              Au
-            </Label>
-            <Input
-              id="to"
-              type="date"
-              value={dashboard.date_to ?? ""}
-              onChange={(e) => updateCustomDate("date_to", e.target.value)}
-              className="w-40"
-            />
+        </header>
+
+        <div className="bg-white border rounded-lg p-4 space-y-3">
+          <Input
+            value={dashboard.name}
+            onChange={(e) => updateName(e.target.value)}
+            className="text-lg font-semibold"
+            placeholder="Nom du tableau"
+          />
+          <div className="flex items-end gap-2 flex-wrap">
+            {PRESETS.map((p) => (
+              <Button
+                key={p.key}
+                size="sm"
+                variant={dashboard.date_preset === p.key ? "default" : "outline"}
+                onClick={() => updatePreset(p.key)}
+              >
+                {p.label}
+              </Button>
+            ))}
+            <span className="text-zinc-400">·</span>
+            <div className="space-y-1">
+              <Label htmlFor="from" className="text-xs">
+                Du
+              </Label>
+              <Input
+                id="from"
+                type="date"
+                value={dashboard.date_from ?? ""}
+                onChange={(e) => updateCustomDate("date_from", e.target.value)}
+                className="w-40"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="to" className="text-xs">
+                Au
+              </Label>
+              <Input
+                id="to"
+                type="date"
+                value={dashboard.date_to ?? ""}
+                onChange={(e) => updateCustomDate("date_to", e.target.value)}
+                className="w-40"
+              />
+            </div>
           </div>
+        </div>
+
+        <div className="grid grid-cols-[240px_1fr_1fr] gap-4">
+          <aside className="bg-white border rounded-lg p-3 space-y-4 max-h-[600px] overflow-auto">
+            <div>
+              <h4 className="text-xs uppercase text-zinc-500 mb-2">
+                Custom events MM ({palette.mmEvents.length})
+              </h4>
+              <ul className="space-y-1">
+                {palette.mmEvents.map((p) => (
+                  <PaletteRow
+                    key={p.ref_id}
+                    item={p}
+                    onAdd={() => addFromPalette(p)}
+                  />
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-xs uppercase text-zinc-500 mb-2">
+                Clics URL ({palette.redirectEvents.length})
+              </h4>
+              <ul className="space-y-1">
+                {palette.redirectEvents.map((p) => (
+                  <PaletteRow
+                    key={p.ref_id}
+                    item={p}
+                    onAdd={() => addFromPalette(p)}
+                  />
+                ))}
+              </ul>
+            </div>
+            {palette.mmEvents.length === 0 &&
+              palette.redirectEvents.length === 0 && (
+                <p className="text-xs text-zinc-500">
+                  Aucun event disponible pour cette école.
+                </p>
+              )}
+          </aside>
+
+          <StepsZone hasSteps={dashboard.steps.length > 0}>
+            <SortableContext items={stepIds} strategy={verticalListSortingStrategy}>
+              {dashboard.steps.length === 0 ? (
+                <p className="text-zinc-500 text-sm py-8 text-center">
+                  Glissez un event ici, ou cliquez sur le « + » d&apos;un event.
+                </p>
+              ) : (
+                <ol className="space-y-2">
+                  {dashboard.steps.map((s, i) => (
+                    <SortableStep
+                      key={s.id}
+                      step={s}
+                      index={i}
+                      label={labelLookup(s)}
+                      onRemove={() => removeStep(i)}
+                    />
+                  ))}
+                </ol>
+              )}
+            </SortableContext>
+          </StepsZone>
+
+          <section className="bg-white border rounded-lg p-3 min-h-[200px] flex items-center justify-center">
+            <p className="text-zinc-400 text-sm">
+              La visualisation s&apos;affichera ici quand au moins une étape sera
+              ajoutée.
+            </p>
+          </section>
         </div>
       </div>
 
-      {/* Body : palette + steps zone + chart zone */}
-      <div className="grid grid-cols-[240px_1fr_1fr] gap-4">
-        {/* Palette */}
-        <aside className="bg-white border rounded-lg p-3 space-y-4 max-h-[600px] overflow-auto">
-          <div>
-            <h4 className="text-xs uppercase text-zinc-500 mb-2">
-              Custom events MM ({palette.mmEvents.length})
-            </h4>
-            <ul className="space-y-1">
-              {palette.mmEvents.map((p) => (
-                <PaletteRow key={p.ref_id} item={p} onAdd={addFromPalette} />
-              ))}
-            </ul>
+      <DragOverlay>
+        {activeDrag && (
+          <div className="bg-white border rounded shadow px-3 py-2 text-sm">
+            {activeDrag.label}
           </div>
-          <div>
-            <h4 className="text-xs uppercase text-zinc-500 mb-2">
-              Clics URL ({palette.redirectEvents.length})
-            </h4>
-            <ul className="space-y-1">
-              {palette.redirectEvents.map((p) => (
-                <PaletteRow key={p.ref_id} item={p} onAdd={addFromPalette} />
-              ))}
-            </ul>
-          </div>
-          {palette.mmEvents.length === 0 && palette.redirectEvents.length === 0 && (
-            <p className="text-xs text-zinc-500">
-              Aucun event disponible pour cette école.
-            </p>
-          )}
-        </aside>
-
-        {/* Steps zone */}
-        <section className="bg-white border rounded-lg p-3 space-y-2 min-h-[200px]">
-          <h4 className="text-xs uppercase text-zinc-500 mb-2">
-            Étapes du funnel
-          </h4>
-          {dashboard.steps.length === 0 ? (
-            <p className="text-zinc-500 text-sm py-8 text-center">
-              Cliquez un event dans la palette pour l&apos;ajouter au funnel.
-            </p>
-          ) : (
-            <ol className="space-y-2">
-              {dashboard.steps.map((s, i) => (
-                <li
-                  key={s.id}
-                  className="flex items-center gap-2 px-3 py-2 bg-zinc-50 rounded border"
-                >
-                  <span className="text-xs text-zinc-400 w-5">{i + 1}.</span>
-                  <span className="flex-1 truncate text-sm">
-                    {labelLookup(s)}
-                  </span>
-                  <span className="text-xs text-zinc-400">
-                    {s.step_type === "mm_event" ? "MM" : "URL"}
-                  </span>
-                  <button
-                    onClick={() => removeStep(i)}
-                    className="text-zinc-400 hover:text-red-600 p-1"
-                    aria-label="Retirer"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </li>
-              ))}
-            </ol>
-          )}
-        </section>
-
-        {/* Chart zone (Phase 8) */}
-        <section className="bg-white border rounded-lg p-3 min-h-[200px] flex items-center justify-center">
-          <p className="text-zinc-400 text-sm">
-            La visualisation s&apos;affichera ici quand au moins une étape sera
-            ajoutée.
-          </p>
-        </section>
-      </div>
-    </div>
+        )}
+      </DragOverlay>
+    </DndContext>
   );
 }
 
@@ -340,17 +418,100 @@ function PaletteRow({
   onAdd,
 }: {
   item: PaletteItem;
-  onAdd: (p: PaletteItem) => void;
+  onAdd: () => void;
 }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `${PALETTE_PREFIX}${item.ref_id}`,
+  });
   return (
-    <li className="flex items-center justify-between gap-2 px-2 py-1 hover:bg-zinc-50 rounded text-sm">
+    <li
+      ref={setNodeRef}
+      className={`flex items-center justify-between gap-2 px-2 py-1 hover:bg-zinc-50 rounded text-sm cursor-grab ${
+        isDragging ? "opacity-30" : ""
+      }`}
+      {...attributes}
+      {...listeners}
+    >
       <span className="truncate flex-1">{item.label}</span>
       <button
-        onClick={() => onAdd(item)}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onAdd();
+        }}
         className="text-zinc-400 hover:text-zinc-900 p-1"
         aria-label={`Ajouter ${item.label}`}
       >
         <Plus className="h-3.5 w-3.5" />
+      </button>
+    </li>
+  );
+}
+
+function StepsZone({
+  hasSteps,
+  children,
+}: {
+  hasSteps: boolean;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: STEPS_ZONE_ID });
+  return (
+    <section
+      ref={setNodeRef}
+      className={`bg-white border rounded-lg p-3 space-y-2 min-h-[200px] transition-colors ${
+        isOver && !hasSteps ? "bg-zinc-50 border-zinc-400" : ""
+      }`}
+    >
+      <h4 className="text-xs uppercase text-zinc-500 mb-2">Étapes du funnel</h4>
+      {children}
+    </section>
+  );
+}
+
+function SortableStep({
+  step,
+  index,
+  label,
+  onRemove,
+}: {
+  step: DashboardStep;
+  index: number;
+  label: string;
+  onRemove: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: step.id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-2 px-3 py-2 bg-zinc-50 rounded border"
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="cursor-grab text-zinc-400 hover:text-zinc-700 -ml-1 p-1"
+        aria-label="Réordonner"
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <span className="text-xs text-zinc-400 w-5">{index + 1}.</span>
+      <span className="flex-1 truncate text-sm">{label}</span>
+      <span className="text-xs text-zinc-400">
+        {step.step_type === "mm_event" ? "MM" : "URL"}
+      </span>
+      <button
+        onClick={onRemove}
+        className="text-zinc-400 hover:text-red-600 p-1"
+        aria-label="Retirer"
+      >
+        <X className="h-3.5 w-3.5" />
       </button>
     </li>
   );
