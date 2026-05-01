@@ -24,18 +24,42 @@ export function FunnelTable({ steps }: { steps: ComputedStep[] }) {
         <tbody>
           {steps.map((s, i) => {
             const prev = i === 0 ? null : steps[i - 1].count;
+            const showBreakdown = s.refs.length > 1;
             return (
               <tr
-                key={`${s.position}-${s.ref_id}`}
-                className={`border-b ${!s.available ? "opacity-50" : ""}`}
+                key={`step-${s.position}`}
+                className={`border-b align-top ${!s.available ? "opacity-50" : ""}`}
               >
                 <td className="py-2 pr-4">
-                  <span className="text-zinc-400 mr-2">{i + 1}.</span>
-                  {s.label}
-                  {!s.available && (
-                    <span className="ml-2 text-xs text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
-                      indisponible
-                    </span>
+                  <div>
+                    <span className="text-zinc-400 mr-2">{i + 1}.</span>
+                    {s.label}
+                    {!s.available && (
+                      <span className="ml-2 text-xs text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+                        indisponible
+                      </span>
+                    )}
+                  </div>
+                  {showBreakdown && (
+                    <ul className="mt-1 ml-6 text-xs text-zinc-500 space-y-0.5">
+                      {s.refs.map((r, ri) => (
+                        <li
+                          key={`${ri}-${r.ref_id}`}
+                          className={`flex justify-between gap-4 ${
+                            !r.available ? "opacity-60" : ""
+                          }`}
+                        >
+                          <span className="truncate">
+                            <span className="text-zinc-400 mr-1">·</span>
+                            {r.label}
+                            {!r.available && (
+                              <span className="ml-1 text-amber-700">(indispo)</span>
+                            )}
+                          </span>
+                          <span className="tabular-nums">{r.count}</span>
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </td>
                 <td className="py-2 pr-4 text-right tabular-nums">{s.count}</td>
