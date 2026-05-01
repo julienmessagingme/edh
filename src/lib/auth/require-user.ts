@@ -1,8 +1,15 @@
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { verifySession, SESSION_COOKIE_NAME, SessionPayload } from "./session";
 import { getSupabase } from "@/lib/supabase/service";
 
-export async function requireUser(): Promise<SessionPayload> {
+/**
+ * `cache()` deduplicates requireUser within a single request : multiple
+ * routes/helpers that all need the current user (e.g. an API handler that
+ * uses both requireUser and getCurrentSchoolSlugChecked) only pay for one
+ * cookie read + JWT verify + deactivated check.
+ */
+export const requireUser = cache(async (): Promise<SessionPayload> => {
   const c = await cookies();
   const tok = c.get(SESSION_COOKIE_NAME)?.value;
   if (!tok) throw Object.assign(new Error("unauthenticated"), { status: 401 });
@@ -10,8 +17,6 @@ export async function requireUser(): Promise<SessionPayload> {
   if (!payload) throw Object.assign(new Error("invalid session"), { status: 401 });
 
   // Vérifie que l'user n'a pas été désactivé entre-temps (admin l'a soft-deleted).
-  // Coût : 1 query par requête authentifiée. Mesurer en prod ; ajouter cache
-  // mémoire à TTL court si nécessaire.
   const sb = getSupabase();
   const { data } = await sb
     .from("users")
@@ -23,14 +28,14 @@ export async function requireUser(): Promise<SessionPayload> {
     throw Object.assign(new Error("deactivated"), { status: 401 });
 
   return payload;
-}
+});
 
 /**
  * Like `requireUser` but additionally checks that `is_admin = true` in the DB.
  * Throws 403 if the user is no longer an admin (e.g. another admin
  * demoted them since they logged in).
  */
-export async function requireAdmin(): Promise<SessionPayload> {
+export const requireAdmin = cache(async (): Promise<SessionPayload> => {
   const user = await requireUser();
   const sb = getSupabase();
   const { data } = await sb
@@ -41,4 +46,4 @@ export async function requireAdmin(): Promise<SessionPayload> {
   if (!data?.is_admin)
     throw Object.assign(new Error("forbidden"), { status: 403 });
   return user;
-}
+});

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase/service";
-import { getCurrentSchoolSlug } from "@/lib/schools/context";
+import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 import { uploadToVectorStore, deleteOpenAIFile, deleteFromVectorStore } from "@/lib/openai-kb";
 import { sanitizeFileName } from "@/lib/knowledge/file-gen";
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauth" }, { status: 401 });
   }
 
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
 
   let formData: FormData;
   try {

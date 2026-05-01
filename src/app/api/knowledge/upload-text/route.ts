@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase/service";
-import { getCurrentSchoolSlug } from "@/lib/schools/context";
+import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 import { uploadToVectorStore, deleteOpenAIFile, deleteFromVectorStore } from "@/lib/openai-kb";
 import { createPdfFromText, sanitizeFileName } from "@/lib/knowledge/file-gen";
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid body" }, { status: 400 });
   }
 
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
   const title = parsed.data.title ?? "Document";
 
   // Build a PDF from the free-form text. pdf-lib is pure JS, runs fine in

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase/service";
-import { getCurrentSchoolSlug } from "@/lib/schools/context";
+import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 import { getClicksDaily } from "@/lib/stats/daily";
 
@@ -27,7 +27,7 @@ export async function GET(
   ) {
     return NextResponse.json({ error: "missing or bad from/to" }, { status: 400 });
   }
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
 
   // Verify the redirect_event belongs to the current school.
   const { data: ev } = await getSupabase()

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isValidSchoolSlug } from "@/lib/schools";
 import { SCHOOL_COOKIE_NAME } from "@/lib/schools/context";
+import { getCurrentUserSchools } from "@/lib/schools/access";
 import { requireUser } from "@/lib/auth/require-user";
 
 export const runtime = "nodejs";
@@ -9,8 +10,9 @@ export const runtime = "nodejs";
 const Body = z.object({ slug: z.string() });
 
 export async function POST(req: Request) {
+  let user;
   try {
-    await requireUser();
+    user = await requireUser();
   } catch {
     return NextResponse.json({ error: "unauth" }, { status: 401 });
   }
@@ -19,6 +21,13 @@ export async function POST(req: Request) {
   if (!parsed.success || !isValidSchoolSlug(parsed.data.slug)) {
     return NextResponse.json({ error: "invalid slug" }, { status: 400 });
   }
+
+  // L'user n'a pas le droit de basculer vers une école hors de ses accès.
+  const allowed = await getCurrentUserSchools(user.userId);
+  if (!allowed.includes(parsed.data.slug)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
   const res = NextResponse.json({ ok: true });
   res.cookies.set(SCHOOL_COOKIE_NAME, parsed.data.slug, {
     httpOnly: false,

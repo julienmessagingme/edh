@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase/service";
-import { getCurrentSchoolSlug } from "@/lib/schools/context";
+import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 import { formatInTimeZone } from "date-fns-tz";
 
@@ -28,7 +28,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "missing or bad from/to" }, { status: 400 });
   }
 
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
   const sb = getSupabase();
 
   const { data: events, error } = await sb

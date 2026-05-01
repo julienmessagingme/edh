@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase/service";
-import { getCurrentSchoolSlug } from "@/lib/schools/context";
+import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 import type {
   DashboardWithSteps,
@@ -50,7 +50,7 @@ async function findOwned(
   userId: string
 ): Promise<{ id: string } | null> {
   const sb = getSupabase();
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
   const { data } = await sb
     .from("dashboards")
     .select("id, created_by, school_slug")

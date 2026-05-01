@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase/service";
-import { getCurrentSchoolSlug } from "@/lib/schools/context";
+import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 import { invalidateSlugCache } from "@/lib/redirect/lookup";
 
@@ -30,7 +30,7 @@ export async function POST(
     return NextResponse.json({ error: "invalid body" }, { status: 400 });
   }
 
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
   const sb = getSupabase();
 
   const { data: ev } = await sb
@@ -90,7 +90,7 @@ export async function GET(
   }
 
   const { id } = await ctx.params;
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
   const sb = getSupabase();
 
   // Verify ownership.

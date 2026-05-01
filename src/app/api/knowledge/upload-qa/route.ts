@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase/service";
-import { getCurrentSchoolSlug } from "@/lib/schools/context";
+import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 import {
   uploadToVectorStore,
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
   }
 
   const { question, answer, themeId, subthemeId, skipIndexation } = parsed.data;
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
 
   // 1. Validate theme/subtheme ownership.
   const themeRes = await resolveThemeForSchool(

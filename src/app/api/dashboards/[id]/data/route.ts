@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase/service";
-import { getCurrentSchoolSlug } from "@/lib/schools/context";
+import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 import { resolveDateRange } from "@/lib/dashboards/date-range";
 import type {
@@ -55,7 +55,7 @@ export async function GET(
   }
   const { id } = await ctx.params;
   const sb = getSupabase();
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
 
   const { data: dash } = await sb
     .from("dashboards")

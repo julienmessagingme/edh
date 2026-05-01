@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase/service";
-import { getCurrentSchoolSlug } from "@/lib/schools/context";
+import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 
 export const runtime = "nodejs";
@@ -18,7 +18,7 @@ export async function GET() {
     return NextResponse.json({ error: "unauth" }, { status: 401 });
   }
 
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
   const sb = getSupabase();
   const { data, error } = await sb
     .from("dashboards")
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid body" }, { status: 400 });
   }
 
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
   const sb = getSupabase();
   const { data, error } = await sb
     .from("dashboards")

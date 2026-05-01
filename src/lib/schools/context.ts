@@ -18,8 +18,8 @@ export async function getCurrentSchoolSlug(): Promise<string> {
  * cookie's slug is no longer accessible (e.g. an admin revoked it). Throws
  * 403 if the user has zero accessible schools.
  *
- * Use this in any user-facing API route that depends on the current school
- * to avoid leaking data across schools the user shouldn't see.
+ * Internally calls `requireUser()` (memoized via React `cache()`) so it's
+ * cheap to use even alongside another `requireUser()` call in the same route.
  */
 export async function getCurrentSchoolSlugChecked(): Promise<string> {
   const slug = await getCurrentSchoolSlug();

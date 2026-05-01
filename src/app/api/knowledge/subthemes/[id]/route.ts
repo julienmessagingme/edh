@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase/service";
-import { getCurrentSchoolSlug } from "@/lib/schools/context";
+import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 
 export const runtime = "nodejs";
@@ -50,9 +50,9 @@ export async function PATCH(
 
   // Read the school slug ONCE at the top : both the subtheme ownership
   // check and the (optional) theme ownership check must run against the
-  // same school to be authoritative. Calling getCurrentSchoolSlug() twice
+  // same school to be authoritative. Calling getCurrentSchoolSlugChecked() twice
   // would open a TOCTOU window if the cookie flips between the two calls.
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
 
   const owned = await findOwnedSubtheme(id, schoolSlug);
   if (!owned) return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -106,7 +106,7 @@ export async function DELETE(
   }
 
   const { id } = await ctx.params;
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
   const owned = await findOwnedSubtheme(id, schoolSlug);
   if (!owned) return NextResponse.json({ error: "not found" }, { status: 404 });
 

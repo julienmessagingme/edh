@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { customAlphabet } from "nanoid";
 import { getSupabase } from "@/lib/supabase/service";
-import { getCurrentSchoolSlug } from "@/lib/schools/context";
+import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 
 export const runtime = "nodejs";
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
   const sb = getSupabase();
 
   // Retry on slug collision (very rare with 8-char alphabet of 32 = 32^8 keyspace).
@@ -85,7 +85,7 @@ export async function GET() {
   } catch {
     return NextResponse.json({ error: "unauth" }, { status: 401 });
   }
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
   const sb = getSupabase();
 
   const { data: events, error } = await sb

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase/service";
-import { getCurrentSchoolSlug } from "@/lib/schools/context";
+import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 import { uploadToVectorStore, deleteFromVectorStore, deleteOpenAIFile } from "@/lib/openai-kb";
 import { createTxtFromQA, buildQaFileName } from "@/lib/knowledge/file-gen";
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     return new Response("invalid body", { status: 400 });
   }
   const { pairs } = parsed.data;
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
   const sb = getSupabase();
 
   const stream = new ReadableStream({

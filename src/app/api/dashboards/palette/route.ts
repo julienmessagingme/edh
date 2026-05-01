@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase/service";
-import { getCurrentSchoolSlug } from "@/lib/schools/context";
+import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 import type { Palette, PaletteItem } from "@/lib/dashboards/types";
 
@@ -12,7 +12,7 @@ export async function GET() {
   } catch {
     return NextResponse.json({ error: "unauth" }, { status: 401 });
   }
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
   const sb = getSupabase();
 
   const [mmRes, redirectsRes] = await Promise.all([

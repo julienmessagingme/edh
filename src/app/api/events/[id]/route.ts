@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase/service";
-import { getCurrentSchoolSlug } from "@/lib/schools/context";
+import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 import { invalidateSlugCache } from "@/lib/redirect/lookup";
 
@@ -11,7 +11,7 @@ const PatchBody = z.object({ name: z.string().min(1).max(120) });
 
 async function findOwned(id: string): Promise<{ slug: string } | null> {
   const sb = getSupabase();
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
   const { data } = await sb
     .from("redirect_events")
     .select("slug, school_slug")

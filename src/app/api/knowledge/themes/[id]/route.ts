@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase/service";
-import { getCurrentSchoolSlug } from "@/lib/schools/context";
+import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 
 export const runtime = "nodejs";
@@ -46,7 +46,7 @@ export async function PATCH(
     return NextResponse.json({ error: "invalid body" }, { status: 400 });
   }
 
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
   const owned = await findOwnedTheme(id, schoolSlug);
   if (!owned) return NextResponse.json({ error: "not found" }, { status: 404 });
 
@@ -78,7 +78,7 @@ export async function DELETE(
   }
 
   const { id } = await ctx.params;
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
   const owned = await findOwnedTheme(id, schoolSlug);
   if (!owned) return NextResponse.json({ error: "not found" }, { status: 404 });
 

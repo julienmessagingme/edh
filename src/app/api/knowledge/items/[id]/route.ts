@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase/service";
-import { getCurrentSchoolSlug } from "@/lib/schools/context";
+import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 import {
   deleteFromVectorStore,
@@ -44,7 +44,7 @@ export async function PATCH(
   }
   const { question, answer, themeId, subthemeId } = parsed.data;
 
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
   const sb = getSupabase();
 
   const { data: item } = await sb
@@ -189,7 +189,7 @@ export async function DELETE(
   }
 
   const { id } = await ctx.params;
-  const schoolSlug = await getCurrentSchoolSlug();
+  const schoolSlug = await getCurrentSchoolSlugChecked();
   const sb = getSupabase();
 
   const { data: item } = await sb
