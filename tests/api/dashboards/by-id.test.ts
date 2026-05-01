@@ -19,39 +19,30 @@ beforeEach(() => {
 });
 
 /**
- * Builds a `from()` mock that responds with `ownerData` to the ownership check
- * (`select(...).eq('id',...).maybeSingle()`) and forwards everything else
- * to `extra` overrides keyed by the called method.
+ * Owner-only mock : `dashboards.select(...).eq('id',...).maybeSingle()`
+ * returns the provided ownerData. Other tables fall through to the
+ * `dashboards` shape too — so use this only when the test never reaches
+ * past the ownership probe (e.g. 404 / 400 / DELETE-only paths).
  */
-function mockSupabase(opts: {
-  ownerData: { id: string; created_by: string; school_slug: string } | null;
-  fromOverrides?: Record<string, unknown>;
-}) {
-  const fromImpl = (table: string) => {
-    if (opts.fromOverrides && opts.fromOverrides[table]) {
-      return opts.fromOverrides[table];
-    }
-    // default ownership check shape, used both for `dashboards` lookups
-    // before we deliberately override it.
-    return {
+function ownerOnlyMock(
+  ownerData: { id: string; created_by: string; school_slug: string } | null
+) {
+  return {
+    from: () => ({
       select: () => ({
         eq: () => ({
-          maybeSingle: () =>
-            Promise.resolve({ data: opts.ownerData, error: null }),
+          maybeSingle: () => Promise.resolve({ data: ownerData, error: null }),
         }),
       }),
-    };
+    }),
   };
-  return { from: fromImpl };
 }
 
 describe("GET /api/dashboards/[id]", () => {
   it("404 when not owned by current user", async () => {
     const { getSupabase } = await import("@/lib/supabase/service");
     (getSupabase as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue(
-      mockSupabase({
-        ownerData: { id: "d1", created_by: "OTHER", school_slug: "efap" },
-      })
+      ownerOnlyMock({ id: "d1", created_by: "OTHER", school_slug: "efap" })
     );
 
     const { GET } = await import("@/app/api/dashboards/[id]/route");
@@ -64,9 +55,7 @@ describe("GET /api/dashboards/[id]", () => {
   it("404 when dashboard belongs to another school", async () => {
     const { getSupabase } = await import("@/lib/supabase/service");
     (getSupabase as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue(
-      mockSupabase({
-        ownerData: { id: "d1", created_by: "u1", school_slug: "icart" },
-      })
+      ownerOnlyMock({ id: "d1", created_by: "u1", school_slug: "icart" })
     );
 
     const { GET } = await import("@/app/api/dashboards/[id]/route");
@@ -76,7 +65,7 @@ describe("GET /api/dashboards/[id]", () => {
     expect(res.status).toBe(404);
   });
 
-  it("returns dashboard + steps when owned", async () => {
+  it("returns dashboard with steps and their refs grouped", async () => {
     let dashboardsCall = 0;
     const fromImpl = (table: string) => {
       if (table === "dashboards") {
@@ -119,26 +108,62 @@ describe("GET /api/dashboards/[id]", () => {
           }),
         };
       }
-      // dashboard_steps
-      return {
-        select: () => ({
-          eq: () => ({
-            order: () =>
-              Promise.resolve({
-                data: [
-                  {
-                    id: "s1",
-                    position: 0,
-                    step_type: "mm_event",
-                    event_ns: "evt_a",
-                    redirect_event_id: null,
-                  },
-                ],
-                error: null,
-              }),
+      if (table === "dashboard_steps") {
+        return {
+          select: () => ({
+            eq: () => ({
+              order: () =>
+                Promise.resolve({
+                  data: [
+                    { id: "s1", position: 0, label: "Relances" },
+                    { id: "s2", position: 1, label: null },
+                  ],
+                  error: null,
+                }),
+            }),
           }),
-        }),
-      };
+        };
+      }
+      if (table === "dashboard_step_refs") {
+        return {
+          select: () => ({
+            in: () => ({
+              order: () =>
+                Promise.resolve({
+                  data: [
+                    {
+                      id: "r1",
+                      step_id: "s1",
+                      ref_position: 0,
+                      step_type: "mm_event",
+                      event_ns: "evt_a",
+                      redirect_event_id: null,
+                    },
+                    {
+                      id: "r2",
+                      step_id: "s1",
+                      ref_position: 1,
+                      step_type: "mm_event",
+                      event_ns: "evt_b",
+                      redirect_event_id: null,
+                    },
+                    {
+                      id: "r3",
+                      step_id: "s2",
+                      ref_position: 0,
+                      step_type: "url_click",
+                      event_ns: null,
+                      redirect_event_id:
+                        "11111111-1111-4111-8111-111111111111",
+                    },
+                  ],
+                  error: null,
+                }),
+            }),
+          }),
+        };
+      }
+      throw new Error(`Unexpected table: ${table}`);
     };
     const { getSupabase } = await import("@/lib/supabase/service");
     (getSupabase as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue({
@@ -150,8 +175,84 @@ describe("GET /api/dashboards/[id]", () => {
       params: Promise.resolve({ id: "d1" }),
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { dashboard: { steps: unknown[] } };
-    expect(body.dashboard.steps).toHaveLength(1);
+    const body = (await res.json()) as {
+      dashboard: {
+        steps: Array<{ id: string; label: string | null; refs: unknown[] }>;
+      };
+    };
+    expect(body.dashboard.steps).toHaveLength(2);
+    expect(body.dashboard.steps[0].label).toBe("Relances");
+    expect(body.dashboard.steps[0].refs).toHaveLength(2);
+    expect(body.dashboard.steps[1].label).toBeNull();
+    expect(body.dashboard.steps[1].refs).toHaveLength(1);
+  });
+
+  it("returns dashboard with empty steps array when none", async () => {
+    let dashboardsCall = 0;
+    const fromImpl = (table: string) => {
+      if (table === "dashboards") {
+        dashboardsCall += 1;
+        if (dashboardsCall === 1) {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: () =>
+                  Promise.resolve({
+                    data: { id: "d1", created_by: "u1", school_slug: "efap" },
+                    error: null,
+                  }),
+              }),
+            }),
+          };
+        }
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () =>
+                Promise.resolve({
+                  data: {
+                    id: "d1",
+                    school_slug: "efap",
+                    created_by: "u1",
+                    name: "F1",
+                    type: "funnel",
+                    date_preset: "30d",
+                    date_from: null,
+                    date_to: null,
+                    created_at: "x",
+                    updated_at: "y",
+                  },
+                  error: null,
+                }),
+            }),
+          }),
+        };
+      }
+      if (table === "dashboard_steps") {
+        return {
+          select: () => ({
+            eq: () => ({
+              order: () => Promise.resolve({ data: [], error: null }),
+            }),
+          }),
+        };
+      }
+      throw new Error(`Unexpected table: ${table}`);
+    };
+    const { getSupabase } = await import("@/lib/supabase/service");
+    (getSupabase as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue({
+      from: fromImpl,
+    });
+
+    const { GET } = await import("@/app/api/dashboards/[id]/route");
+    const res = await GET(new Request("http://x/api/dashboards/d1"), {
+      params: Promise.resolve({ id: "d1" }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      dashboard: { steps: unknown[] };
+    };
+    expect(body.dashboard.steps).toEqual([]);
   });
 });
 
@@ -159,9 +260,7 @@ describe("PATCH /api/dashboards/[id]", () => {
   it("400 on empty body", async () => {
     const { getSupabase } = await import("@/lib/supabase/service");
     (getSupabase as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue(
-      mockSupabase({
-        ownerData: { id: "d1", created_by: "u1", school_slug: "efap" },
-      })
+      ownerOnlyMock({ id: "d1", created_by: "u1", school_slug: "efap" })
     );
 
     const { PATCH } = await import("@/app/api/dashboards/[id]/route");
@@ -179,9 +278,7 @@ describe("PATCH /api/dashboards/[id]", () => {
   it("404 when not owned", async () => {
     const { getSupabase } = await import("@/lib/supabase/service");
     (getSupabase as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue(
-      mockSupabase({
-        ownerData: { id: "d1", created_by: "OTHER", school_slug: "efap" },
-      })
+      ownerOnlyMock({ id: "d1", created_by: "OTHER", school_slug: "efap" })
     );
 
     const { PATCH } = await import("@/app/api/dashboards/[id]/route");
@@ -204,7 +301,6 @@ describe("PATCH /api/dashboards/[id]", () => {
     (getSupabase as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue({
       from: (table: string) => {
         if (table === "dashboards") {
-          // First call = ownership lookup (maybeSingle), then update.
           return {
             select: () => ({
               eq: () => ({
@@ -237,14 +333,16 @@ describe("PATCH /api/dashboards/[id]", () => {
     expect(arg.name).toBe("Renommed");
   });
 
-  it("replaces steps atomically (delete then insert)", async () => {
-    const deleteFn = vi.fn().mockReturnValue({
+  it("replaces steps atomically (cumul: 1 step with 3 refs, mixed types)", async () => {
+    const stepDelete = vi.fn().mockReturnValue({
       eq: () => Promise.resolve({ error: null }),
     });
-    const insertFn = vi.fn().mockResolvedValue({ error: null });
-    const update = vi.fn().mockReturnValue({
-      eq: () => Promise.resolve({ error: null }),
+    const stepInsertSelect = vi.fn().mockReturnValue({
+      single: () => Promise.resolve({ data: { id: "new-step-1" }, error: null }),
     });
+    const stepInsert = vi.fn().mockReturnValue({ select: stepInsertSelect });
+    const refsInsert = vi.fn().mockResolvedValue({ error: null });
+
     const { getSupabase } = await import("@/lib/supabase/service");
     (getSupabase as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue({
       from: (table: string) => {
@@ -259,10 +357,18 @@ describe("PATCH /api/dashboards/[id]", () => {
                   }),
               }),
             }),
-            update,
+            update: vi.fn().mockReturnValue({
+              eq: () => Promise.resolve({ error: null }),
+            }),
           };
         }
-        return { delete: deleteFn, insert: insertFn };
+        if (table === "dashboard_steps") {
+          return { delete: stepDelete, insert: stepInsert };
+        }
+        if (table === "dashboard_step_refs") {
+          return { insert: refsInsert };
+        }
+        throw new Error(`Unexpected table: ${table}`);
       },
     });
 
@@ -273,10 +379,16 @@ describe("PATCH /api/dashboards/[id]", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           steps: [
-            { step_type: "mm_event", event_ns: "evt_a" },
             {
-              step_type: "url_click",
-              redirect_event_id: "11111111-1111-4111-8111-111111111111",
+              label: "Relances cumul",
+              refs: [
+                { step_type: "mm_event", event_ns: "evt_a" },
+                { step_type: "mm_event", event_ns: "evt_b" },
+                {
+                  step_type: "url_click",
+                  redirect_event_id: "11111111-1111-4111-8111-111111111111",
+                },
+              ],
             },
           ],
         }),
@@ -284,34 +396,40 @@ describe("PATCH /api/dashboards/[id]", () => {
       { params: Promise.resolve({ id: "d1" }) }
     );
     expect(res.status).toBe(200);
-    expect(deleteFn).toHaveBeenCalled();
-    expect(insertFn).toHaveBeenCalled();
-    const rows = insertFn.mock.calls[0][0] as Array<{
-      position: number;
+    expect(stepDelete).toHaveBeenCalled();
+    expect(stepInsert).toHaveBeenCalledTimes(1);
+    expect(stepInsert.mock.calls[0][0]).toMatchObject({
+      dashboard_id: "d1",
+      position: 0,
+      label: "Relances cumul",
+    });
+    expect(refsInsert).toHaveBeenCalledTimes(1);
+    const refs = refsInsert.mock.calls[0][0] as Array<{
+      step_id: string;
+      ref_position: number;
       step_type: string;
       event_ns: string | null;
       redirect_event_id: string | null;
     }>;
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({
-      position: 0,
+    expect(refs).toHaveLength(3);
+    expect(refs[0]).toMatchObject({
+      step_id: "new-step-1",
+      ref_position: 0,
       step_type: "mm_event",
       event_ns: "evt_a",
       redirect_event_id: null,
     });
-    expect(rows[1]).toMatchObject({
-      position: 1,
+    expect(refs[2]).toMatchObject({
+      ref_position: 2,
       step_type: "url_click",
       event_ns: null,
     });
   });
 
-  it("400 on invalid step (mm_event without event_ns)", async () => {
+  it("400 on empty refs array", async () => {
     const { getSupabase } = await import("@/lib/supabase/service");
     (getSupabase as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue(
-      mockSupabase({
-        ownerData: { id: "d1", created_by: "u1", school_slug: "efap" },
-      })
+      ownerOnlyMock({ id: "d1", created_by: "u1", school_slug: "efap" })
     );
 
     const { PATCH } = await import("@/app/api/dashboards/[id]/route");
@@ -320,7 +438,27 @@ describe("PATCH /api/dashboards/[id]", () => {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          steps: [{ step_type: "mm_event" }],
+          steps: [{ refs: [] }],
+        }),
+      }),
+      { params: Promise.resolve({ id: "d1" }) }
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("400 on invalid ref (mm_event without event_ns)", async () => {
+    const { getSupabase } = await import("@/lib/supabase/service");
+    (getSupabase as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue(
+      ownerOnlyMock({ id: "d1", created_by: "u1", school_slug: "efap" })
+    );
+
+    const { PATCH } = await import("@/app/api/dashboards/[id]/route");
+    const res = await PATCH(
+      new Request("http://x/api/dashboards/d1", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          steps: [{ refs: [{ step_type: "mm_event" }] }],
         }),
       }),
       { params: Promise.resolve({ id: "d1" }) }
@@ -333,9 +471,7 @@ describe("DELETE /api/dashboards/[id]", () => {
   it("404 when not owned", async () => {
     const { getSupabase } = await import("@/lib/supabase/service");
     (getSupabase as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue(
-      mockSupabase({
-        ownerData: { id: "d1", created_by: "OTHER", school_slug: "efap" },
-      })
+      ownerOnlyMock({ id: "d1", created_by: "OTHER", school_slug: "efap" })
     );
 
     const { DELETE } = await import("@/app/api/dashboards/[id]/route");

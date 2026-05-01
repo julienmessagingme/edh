@@ -3,11 +3,15 @@ import { z } from "zod";
 import { getSupabase } from "@/lib/supabase/service";
 import { getCurrentSchoolSlug } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
-import type { DashboardWithSteps } from "@/lib/dashboards/types";
+import type {
+  DashboardWithSteps,
+  DashboardStep,
+  StepRef,
+} from "@/lib/dashboards/types";
 
 export const runtime = "nodejs";
 
-const StepSchema = z.discriminatedUnion("step_type", [
+const RefSchema = z.discriminatedUnion("step_type", [
   z.object({
     step_type: z.literal("mm_event"),
     event_ns: z.string().min(1),
@@ -17,6 +21,11 @@ const StepSchema = z.discriminatedUnion("step_type", [
     redirect_event_id: z.string().uuid(),
   }),
 ]);
+
+const StepSchema = z.object({
+  label: z.string().trim().max(200).nullable().optional(),
+  refs: z.array(RefSchema).min(1).max(20),
+});
 
 const PatchBody = z
   .object({
@@ -77,7 +86,7 @@ export async function GET(
       .single(),
     sb
       .from("dashboard_steps")
-      .select("id, position, step_type, event_ns, redirect_event_id")
+      .select("id, position, label")
       .eq("dashboard_id", id)
       .order("position", { ascending: true }),
   ]);
@@ -86,9 +95,48 @@ export async function GET(
   if (stepsRes.error)
     return NextResponse.json({ error: stepsRes.error.message }, { status: 500 });
 
+  const stepRows = (stepsRes.data ?? []) as Array<{
+    id: string;
+    position: number;
+    label: string | null;
+  }>;
+  const stepIds = stepRows.map((s) => s.id);
+
+  let refs: StepRef[] = [];
+  if (stepIds.length > 0) {
+    const { data: refsData, error: refsErr } = await sb
+      .from("dashboard_step_refs")
+      .select("id, step_id, ref_position, step_type, event_ns, redirect_event_id")
+      .in("step_id", stepIds)
+      .order("ref_position", { ascending: true });
+    if (refsErr)
+      return NextResponse.json({ error: refsErr.message }, { status: 500 });
+    refs = (refsData ?? []) as unknown as (StepRef & { step_id: string })[];
+  }
+
+  const refsByStep = new Map<string, StepRef[]>();
+  for (const r of refs as Array<StepRef & { step_id: string }>) {
+    const arr = refsByStep.get(r.step_id) ?? [];
+    arr.push({
+      id: r.id,
+      ref_position: r.ref_position,
+      step_type: r.step_type,
+      event_ns: r.event_ns,
+      redirect_event_id: r.redirect_event_id,
+    });
+    refsByStep.set(r.step_id, arr);
+  }
+
+  const steps: DashboardStep[] = stepRows.map((s) => ({
+    id: s.id,
+    position: s.position,
+    label: s.label,
+    refs: refsByStep.get(s.id) ?? [],
+  }));
+
   const dashboard: DashboardWithSteps = {
     ...dashRes.data,
-    steps: stepsRes.data ?? [],
+    steps,
   };
   return NextResponse.json({ dashboard });
 }
@@ -130,6 +178,7 @@ export async function PATCH(
   }
 
   if (parsed.data.steps !== undefined) {
+    // Cascade : delete des steps supprime aussi les refs (FK ON DELETE CASCADE).
     const { error: delErr } = await sb
       .from("dashboard_steps")
       .delete()
@@ -137,18 +186,33 @@ export async function PATCH(
     if (delErr)
       return NextResponse.json({ error: delErr.message }, { status: 500 });
 
-    if (parsed.data.steps.length > 0) {
-      const rows = parsed.data.steps.map((s, i) => ({
-        dashboard_id: id,
-        position: i,
-        step_type: s.step_type,
-        event_ns: s.step_type === "mm_event" ? s.event_ns : null,
+    for (let i = 0; i < parsed.data.steps.length; i++) {
+      const step = parsed.data.steps[i];
+      const { data: stepRow, error: stepErr } = await sb
+        .from("dashboard_steps")
+        .insert({
+          dashboard_id: id,
+          position: i,
+          label: step.label ?? null,
+        })
+        .select("id")
+        .single();
+      if (stepErr)
+        return NextResponse.json({ error: stepErr.message }, { status: 500 });
+
+      const refRows = step.refs.map((r, ri) => ({
+        step_id: stepRow.id,
+        ref_position: ri,
+        step_type: r.step_type,
+        event_ns: r.step_type === "mm_event" ? r.event_ns : null,
         redirect_event_id:
-          s.step_type === "url_click" ? s.redirect_event_id : null,
+          r.step_type === "url_click" ? r.redirect_event_id : null,
       }));
-      const { error: insErr } = await sb.from("dashboard_steps").insert(rows);
-      if (insErr)
-        return NextResponse.json({ error: insErr.message }, { status: 500 });
+      const { error: refsErr } = await sb
+        .from("dashboard_step_refs")
+        .insert(refRows);
+      if (refsErr)
+        return NextResponse.json({ error: refsErr.message }, { status: 500 });
     }
   }
 
