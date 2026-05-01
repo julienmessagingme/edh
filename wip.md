@@ -4,7 +4,20 @@
 
 ## En cours
 
-(rien — V1 complète et déployée en prod le 2026-04-30 sur https://edh.messagingme.app)
+(rien — V1 + module Base de connaissance livrés en prod sur https://edh.messagingme.app)
+
+## À traiter dans la prochaine session
+
+Deux items différés pendant la livraison de la base de connaissance :
+
+1. **Rename `ejf` → `efj`** — slug DB, env vars `MM_TOKEN_EJF` / `OPENAI_VS_EJF`,
+   constante SCHOOLS, références dans la doc. Migration SQL pour renommer
+   `school_slug='ejf'` → `'efj'` dans `mm_events`, `mm_occurrences`,
+   `mm_sync_state`, `redirect_events`, et `knowledge_*`.
+2. **Logos d'école dans la sidebar / header** — assets dans `docs/logo *.png`
+   (10 fichiers, EDH groupe + 9 écoles). Déplacer en `public/logos/`,
+   ajouter un champ `logoFile` à la constante SCHOOLS, afficher en sidebar
+   (vignette à gauche du nom d'école) et le logo EDH groupe en haut du header.
 
 ## Notes opérationnelles à jour
 
@@ -67,6 +80,8 @@ Voir `todo.md` pour le backlog complet. Quelques pistes à creuser :
 - Export CSV depuis l'onglet Stats.
 - Dashboard agrégé "toutes écoles confondues".
 - Geo-IP enrichment (`country` reste vide).
+- Cleanup job des fichiers orphelins OpenAI (cas où `DELETE /items/:id`
+  échoue côté OpenAI mais réussit côté DB → ghost OpenAI files).
 
 ## Surveillance
 

@@ -1,9 +1,12 @@
 # CLAUDE.md — EDH Stats
 
-Dashboard multi-écoles pour le client EDH. Deux fonctions :
+Dashboard multi-écoles pour le client EDH. Trois fonctions :
 
 1. **URLs trackées** pour templates WhatsApp — slug court → redirect 302 server-side, comptage des clics.
 2. **Stats** — récupère les custom events via l'API messagingme et permet de comparer leur volumétrie aux clics URL (ratios).
+3. **Base de connaissance** — alimente le vector store OpenAI de chaque école (4 modes : fichier PDF/TXT, saisie texte, Q/R structurées avec thèmes, import Excel en masse). Gère un vector store par école.
+
+Header niveau 1 : `[Stats] [Base de connaissance]`. Sous-nav `[URLs] [Stats]` quand `Stats` est actif.
 
 Déployé en Docker sur le VPS OVH `146.59.233.252` derrière NPM, sur le sous-domaine **`edh.messagingme.app`**.
 
@@ -83,5 +86,6 @@ NPM : proxy host `edh.messagingme.app` → `http://edh-app:3000`, SSL Let's Encr
 | 7 — Onglet Stats (accordéons + comparaison) + code review | ✅ |
 | 8 — Dockerfile + docker-compose | ✅ |
 | 9 — Déploiement VPS + NPM proxy + DNS + Let's Encrypt | ✅ |
+| 10 — Module Base de connaissance (4 modes upload + thèmes + Excel SSE) | ✅ |
 
-Container `edh-app` sur réseau Docker `mcp-robot_default` (NPM), proxy host id 12, cert Let's Encrypt id 13 (expires 2026-07-29). Cron 22:00 Europe/Paris actif. 9 écoles, ~3k occurrences déjà ingérées.
+Container `edh-app` sur réseau Docker `mcp-robot_default` (NPM), proxy host id 12, cert Let's Encrypt id 13 (expires 2026-07-29). Cron 22:00 Europe/Paris actif. 9 écoles, ~3k occurrences déjà ingérées. 9 vector stores OpenAI configurés (un par école) pour la base de connaissance.
