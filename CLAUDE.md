@@ -66,7 +66,7 @@ NPM : proxy host `edh.messagingme.app` → `http://edh-app:3000`, SSL Let's Encr
 - **Migrations SQL appliquées à la main** via Supabase SQL Editor (pas de CLI push).
 - **`/r/:slug` doit toujours marcher** même sans auth, même si la DB est partiellement down (503 propre, jamais 500 leak).
 - **Cron 22:00 Europe/Paris** (Phase 6) tournera dans le process Next.js. `DISABLE_CRON=1` pour le désactiver en dev.
-- **9 écoles** : EFAP, 3WA, Brassart, CESINE, EJF, ESEC, École Bleue, ICART, IFA. Bearer tokens en env vars (`MM_TOKEN_<SLUG>`). Ajouter une école = redeploy.
+- **9 écoles** : EFAP, 3WA, Brassart, CESINE, EFJ, ESEC, École Bleue, ICART, IFA. Bearer tokens en env vars (`MM_TOKEN_<SLUG>`). Ajouter une école = redeploy.
 - **Pas de RLS Supabase.** L'app utilise le service-role server-side uniquement, jamais d'accès DB depuis le client.
 - **UI 100% française** dans les strings affichées.
 

@@ -13,7 +13,7 @@
 
 ## Switch d'école (sidebar)
 
-- Sidebar gauche fixe avec les 9 écoles : EFAP, 3WA, Brassart, CESINE, EJF, ESEC, École Bleue, ICART, IFA.
+- Sidebar gauche fixe avec les 9 écoles (logo + nom) : EFAP, 3WA, Brassart, CESINE, EFJ, ESEC, École Bleue, ICART, IFA. Logo du groupe EDH en haut à gauche du header, tabs `[Stats] [Base de connaissance]` immédiatement à droite.
 - Cliquer une école change le contexte de toute l'app — URLs et Stats se filtrent automatiquement sur l'école sélectionnée.
 - Le choix persiste 1 an dans un cookie. Au premier login, on est par défaut sur EFAP.
 - Bouton « Se déconnecter » en bas de la sidebar.

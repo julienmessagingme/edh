@@ -8,16 +8,8 @@
 
 ## À traiter dans la prochaine session
 
-Deux items différés pendant la livraison de la base de connaissance :
-
-1. **Rename `ejf` → `efj`** — slug DB, env vars `MM_TOKEN_EJF` / `OPENAI_VS_EJF`,
-   constante SCHOOLS, références dans la doc. Migration SQL pour renommer
-   `school_slug='ejf'` → `'efj'` dans `mm_events`, `mm_occurrences`,
-   `mm_sync_state`, `redirect_events`, et `knowledge_*`.
-2. **Logos d'école dans la sidebar / header** — assets dans `docs/logo *.png`
-   (10 fichiers, EDH groupe + 9 écoles). Déplacer en `public/logos/`,
-   ajouter un champ `logoFile` à la constante SCHOOLS, afficher en sidebar
-   (vignette à gauche du nom d'école) et le logo EDH groupe en haut du header.
+(rien d'urgent — les 2 items différés ont été livrés le 2026-05-01 :
+rename ejf→efj + logos école/EDH dans sidebar et header).
 
 ## Notes opérationnelles à jour
 

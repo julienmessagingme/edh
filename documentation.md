@@ -154,7 +154,7 @@ mm_sync_state       (school_slug, event_ns) PK, last_occurrence_id, last_run_at,
 | `AUTH_SECRET` | server (Edge + Node) | JWT HS256 signing key (64 chars hex) |
 | `INTERNAL_API_KEY` | server only | Bearer pour `/api/cron/sync` manuel (Phase 6) |
 | `MESSAGINGME_API_BASE` | server only | `https://ai.messagingme.app/api` |
-| `MM_TOKEN_<SLUG>` | server only | 9 vars (EFAP, 3WA, BRASSART, CESINE, EJF, ESEC, ECOLE_BLEUE, ICART, IFA) |
+| `MM_TOKEN_<SLUG>` | server only | 9 vars (EFAP, 3WA, BRASSART, CESINE, EFJ, ESEC, ECOLE_BLEUE, ICART, IFA) |
 | `CRON_TIMEZONE` | server only | `Europe/Paris` |
 | `PUBLIC_BASE_URL` | server only | `https://edh.messagingme.app` (UI base path), `http://localhost:3000` en dev |
 | `DISABLE_CRON` | server only | `1` désactive le cron (utile en dev) |

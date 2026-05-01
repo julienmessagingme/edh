@@ -3,18 +3,27 @@ export interface School {
   name: string;
   tokenEnv: string;
   vectorStoreEnv: string;
+  /** Public URL of the school's logo, served from /public/logos/<slug>.png. */
+  logo: string;
 }
 
+/**
+ * Path of the EDH group logo (the one above all the schools). Served from
+ * the same /public/logos/ directory. Exported separately because it's not
+ * tied to any specific school but lives next to its assets.
+ */
+export const EDH_GROUP_LOGO = "/logos/edh.png";
+
 export const SCHOOLS: readonly School[] = [
-  { slug: "efap",         name: "EFAP",         tokenEnv: "MM_TOKEN_EFAP",         vectorStoreEnv: "OPENAI_VS_EFAP" },
-  { slug: "3wa",          name: "3WA",          tokenEnv: "MM_TOKEN_3WA",          vectorStoreEnv: "OPENAI_VS_3WA" },
-  { slug: "brassart",     name: "Brassart",     tokenEnv: "MM_TOKEN_BRASSART",     vectorStoreEnv: "OPENAI_VS_BRASSART" },
-  { slug: "cesine",       name: "CESINE",       tokenEnv: "MM_TOKEN_CESINE",       vectorStoreEnv: "OPENAI_VS_CESINE" },
-  { slug: "ejf",          name: "EJF",          tokenEnv: "MM_TOKEN_EJF",          vectorStoreEnv: "OPENAI_VS_EJF" },
-  { slug: "esec",         name: "ESEC",         tokenEnv: "MM_TOKEN_ESEC",         vectorStoreEnv: "OPENAI_VS_ESEC" },
-  { slug: "ecole-bleue",  name: "École Bleue",  tokenEnv: "MM_TOKEN_ECOLE_BLEUE",  vectorStoreEnv: "OPENAI_VS_ECOLE_BLEUE" },
-  { slug: "icart",        name: "ICART",        tokenEnv: "MM_TOKEN_ICART",        vectorStoreEnv: "OPENAI_VS_ICART" },
-  { slug: "ifa",          name: "IFA",          tokenEnv: "MM_TOKEN_IFA",          vectorStoreEnv: "OPENAI_VS_IFA" },
+  { slug: "efap",         name: "EFAP",         tokenEnv: "MM_TOKEN_EFAP",         vectorStoreEnv: "OPENAI_VS_EFAP",         logo: "/logos/efap.png" },
+  { slug: "3wa",          name: "3WA",          tokenEnv: "MM_TOKEN_3WA",          vectorStoreEnv: "OPENAI_VS_3WA",          logo: "/logos/3wa.png" },
+  { slug: "brassart",     name: "Brassart",     tokenEnv: "MM_TOKEN_BRASSART",     vectorStoreEnv: "OPENAI_VS_BRASSART",     logo: "/logos/brassart.png" },
+  { slug: "cesine",       name: "CESINE",       tokenEnv: "MM_TOKEN_CESINE",       vectorStoreEnv: "OPENAI_VS_CESINE",       logo: "/logos/cesine.png" },
+  { slug: "efj",          name: "EFJ",          tokenEnv: "MM_TOKEN_EFJ",          vectorStoreEnv: "OPENAI_VS_EFJ",          logo: "/logos/efj.png" },
+  { slug: "esec",         name: "ESEC",         tokenEnv: "MM_TOKEN_ESEC",         vectorStoreEnv: "OPENAI_VS_ESEC",         logo: "/logos/esec.png" },
+  { slug: "ecole-bleue",  name: "École Bleue",  tokenEnv: "MM_TOKEN_ECOLE_BLEUE",  vectorStoreEnv: "OPENAI_VS_ECOLE_BLEUE",  logo: "/logos/ecole-bleue.png" },
+  { slug: "icart",        name: "ICART",        tokenEnv: "MM_TOKEN_ICART",        vectorStoreEnv: "OPENAI_VS_ICART",        logo: "/logos/icart.png" },
+  { slug: "ifa",          name: "IFA",          tokenEnv: "MM_TOKEN_IFA",          vectorStoreEnv: "OPENAI_VS_IFA",          logo: "/logos/ifa.png" },
 ] as const;
 
 const SLUG_SET = new Set(SCHOOLS.map((s) => s.slug));
