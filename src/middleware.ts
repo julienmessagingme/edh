@@ -14,6 +14,10 @@ const PUBLIC_PATHS = new Set([
 function isPublic(pathname: string): boolean {
   if (pathname.startsWith("/r/")) return true;
   if (pathname.startsWith("/_next/") || pathname.startsWith("/favicon")) return true;
+  // Static assets served from /public must be reachable on the /login page
+  // (which renders before any session is established) — most importantly
+  // the school + EDH logos shown in the auth-gated shell.
+  if (pathname.startsWith("/logos/")) return true;
   return PUBLIC_PATHS.has(pathname);
 }
 
