@@ -153,9 +153,12 @@ knowledge_items     (id, school_slug, type CHECK file|text|qa, file_name, title,
                      theme_id FK, subtheme_id FK, vector_store_file_id, openai_file_id, status, uploaded_by, uploaded_at)
 dashboards          (id, school_slug, created_by FK, name, type CHECK 'funnel',
                      date_preset CHECK 7d|30d|90d|custom, date_from, date_to, created_at, updated_at)
-dashboard_steps     (id, dashboard_id FK, position, step_type CHECK mm_event|url_click,
-                     event_ns nullable, redirect_event_id FK nullable,
-                     CHECK exactly one ref, UNIQUE (dashboard_id, position))
+dashboard_steps     (id, dashboard_id FK, position, label nullable,
+                     UNIQUE (dashboard_id, position))
+dashboard_step_refs (id, step_id FK CASCADE, ref_position,
+                     step_type CHECK mm_event|url_click,
+                     event_ns nullable, redirect_event_id FK CASCADE nullable,
+                     CHECK exactly one ref, UNIQUE (step_id, ref_position))
 ```
 
 **Index** :
@@ -164,6 +167,7 @@ dashboard_steps     (id, dashboard_id FK, position, step_type CHECK mm_event|url
 - `idx_mm_occurrences_school_event_occurred (school_slug, event_ns, occurred_at)`
 - `idx_dashboards_user_school (created_by, school_slug, updated_at DESC)`
 - `idx_dashboard_steps_dashboard (dashboard_id, position)`
+- `idx_dashboard_step_refs_step (step_id, ref_position)`
 
 **Pas de RLS.** Service-role server-side uniquement. Les filtres `school_slug` sont appliqués côté app.
 

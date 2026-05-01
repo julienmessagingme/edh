@@ -118,10 +118,12 @@ Troisième sous-onglet de Stats. Chaque user UI (Julien, EDH) construit ses prop
 **Builder `/dashboards/[id]`** :
 
 - En haut : nom éditable inline, sélecteurs de période (presets `7j / 30j / 90j` + dates `du / au` custom), bouton « Supprimer ».
-- À gauche, palette en deux sections : `Custom events MM` (les events messagingme de l'école) et `Clics URL` (les URLs trackées non archivées de l'école). On peut ajouter une étape par drag-and-drop **ou** par clic sur le « + » de l'item.
-- Au milieu, zone funnel : les étapes choisies dans l'ordre. Drag-and-drop pour réordonner, ✕ pour retirer. Une étape dont la source a disparu (event mm supprimé, URL archivée) s'affiche grisée avec un badge « indisponible ».
-- À droite, visualisation : bar chart horizontal recharts (longueur = volume), table récap (étape, volume, conversion vs étape précédente, conversion vs étape 1).
-- Auto-save : chaque modif (renommage, ordre, étapes, dates) est sauvegardée silencieusement après 500 ms (toast « Enregistrement… » discret en haut à droite).
+- À gauche, palette en deux sections : `Custom events MM` (les events messagingme de l'école) et `Clics URL` (les URLs trackées non archivées de l'école). On glisse un item de la palette vers la zone d'étapes pour créer une nouvelle étape, ou vers une étape existante pour **cumuler** la source dans cette étape.
+- Au milieu, zone funnel : les étapes choisies dans l'ordre. Chaque étape a un **label éditable** (placeholder = composition auto `A + B + C`), une badge `MM / URL / Mixte`, et une liste de **chips** pour ses sources. Bouton `+ Ajouter` dans chaque étape pour ajouter une source via menu déroulant. Drag-and-drop pour réordonner les étapes, ✕ pour retirer une chip (si dernière chip → l'étape entière est supprimée), poubelle pour supprimer toute l'étape. Une chip dont la source a disparu (event mm supprimé, URL archivée) s'affiche grisée.
+- À droite, visualisation : bar chart horizontal recharts (longueur = volume **cumulé** des sources de l'étape), table récap (étape, volume, conversion vs étape précédente, conversion vs étape 1, breakdown des sources individuelles si > 1).
+- Auto-save : chaque modif (renommage, ordre, étapes, sources, dates, label) est sauvegardée silencieusement après 500 ms (toast « Enregistrement… » discret en haut à droite).
+
+**Étapes cumulées (rapports cumul)** : on peut empiler plusieurs sources dans une même étape — par exemple `relance benin V1` + `relance benin V2` + `relance ICART V1` formant l'étape `Relances`, dont le volume affiché = somme des trois. Mix mm + URL autorisé. Si une source disparaît, l'étape continue de fonctionner avec les sources restantes ; l'étape n'est marquée « indisponible » que si toutes ses sources ont disparu.
 
 **Sémantique du funnel V1** : on compare des **volumes purs** d'occurrences sur la période. Pas de matching utilisateur entre étapes — c'est une vue esthétique pour repérer les ordres de grandeur et les ratios entre étapes consécutives, pas une analyse causale par utilisateur.
 
