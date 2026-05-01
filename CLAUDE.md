@@ -1,13 +1,14 @@
 # CLAUDE.md — EDH Stats
 
-Dashboard multi-écoles pour le client EDH. Quatre fonctions :
+Dashboard multi-écoles pour le client EDH. Cinq fonctions :
 
 1. **URLs trackées** pour templates WhatsApp — slug court → redirect 302 server-side, comptage des clics.
 2. **Stats** — récupère les custom events via l'API messagingme et permet de comparer leur volumétrie aux clics URL (ratios).
 3. **Mes tableaux** — chaque user UI construit ses propres funnels par école. Chaque étape peut **cumuler** plusieurs events (mm + URL mixés), volumes sommés. Drag-and-drop palette → étape (nouvelle ou existante), label éditable par étape, viz bar chart recharts. Persistés en DB et privés.
 4. **Base de connaissance** — alimente le vector store OpenAI de chaque école (4 modes : fichier PDF/TXT, saisie texte, Q/R structurées avec thèmes, import Excel en masse). Gère un vector store par école.
+5. **Admin** — onglet visible uniquement par les admins (Julien, Kelberg, Hassani au moment de l'écriture). Permet d'inviter de nouveaux utilisateurs, de cocher leurs écoles d'accès, et de désactiver les comptes. Les non-admins ne voient ni le tab ni l'URL `/admin`.
 
-Header niveau 1 : `[Stats] [Base de connaissance]`. Sous-nav `[URLs] [Stats] [Mes tableaux]` quand `Stats` est actif.
+Header niveau 1 : `[Stats] [Base de connaissance] [Admin]` (le 3e onglet visible uniquement aux admins). Sous-nav `[URLs] [Stats] [Mes tableaux]` quand `Stats` est actif.
 
 Déployé en Docker sur le VPS OVH `146.59.233.252` derrière NPM, sur le sous-domaine **`edh.messagingme.app`**.
 
@@ -24,6 +25,8 @@ Déployé en Docker sur le VPS OVH `146.59.233.252` derrière NPM, sur le sous-d
 - **`docs/plans/2026-05-01-dashboards-design.md`** — design module Mes tableaux
 - **`docs/plans/2026-05-01-dashboards-implementation.md`** — plan module Mes tableaux
 - **`docs/plans/2026-05-01-dashboards-cumul-implementation.md`** — plan extension cumul (multi-refs par step)
+- **`docs/plans/2026-05-01-admin-design.md`** — design module Admin (is_admin + user_school_access)
+- **`docs/plans/2026-05-01-admin-implementation.md`** — plan module Admin
 
 ## Commandes essentielles
 
@@ -99,5 +102,6 @@ NPM : proxy host id 12 `edh.messagingme.app` → `http://edh-app:3000`, SSL Let'
 | 11 — Rename EJF→EFJ (migration 003) + logos d'école / EDH groupe dans header + sidebar | ✅ |
 | 12 — Module Mes tableaux (custom dashboards funnel + dnd-kit + recharts) | ✅ |
 | 13 — Mes tableaux : étapes cumulées (multi-refs par step, migration 005, label éditable) | ✅ |
+| 14 — Module Admin (is_admin + user_school_access + invite/désactivation, migration 006) | ✅ |
 
 Container `edh-app` sur réseau Docker `mcp-robot_default` (NPM), proxy host id 12, cert Let's Encrypt id 13 (expires 2026-07-29). Cron 22:00 Europe/Paris actif. 9 écoles avec leur logo, ~3k occurrences messagingme ingérées. 9 vector stores OpenAI configurés (un par école) pour la base de connaissance. Logos servis depuis `/public/logos/<slug>.png` + `/logos/edh.png` (groupe), middleware whitelist `/logos/`. Module Mes tableaux : tables `dashboards` + `dashboard_steps` + `dashboard_step_refs` (multi-refs par step pour cumul de volumes), auto-save 500ms via PATCH atomique (delete cascade puis re-insert steps + refs), lib drag-and-drop `@dnd-kit/core`+`@dnd-kit/sortable` (~12kB).

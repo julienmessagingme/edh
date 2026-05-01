@@ -139,7 +139,9 @@ Latence cible : <50ms côté VPS.
 Voir `supabase/migrations/001_init.sql` pour la version exacte.
 
 ```
-users               (id, email UNIQUE, password_hash, name, created_at)
+users               (id, email UNIQUE, password_hash, name, created_at,
+                     is_admin DEFAULT false, deactivated_at, last_login_at)
+user_school_access  (user_id FK CASCADE, school_slug, PK (user_id, school_slug))
 redirect_events     (id, school_slug, slug UNIQUE, name, created_by, archived_at)
 redirect_versions   (id, event_id FK, destination_url, version, active_from, active_to)
                     UNIQUE INDEX (event_id) WHERE active_to IS NULL

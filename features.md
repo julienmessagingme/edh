@@ -131,6 +131,29 @@ Troisième sous-onglet de Stats. Chaque user UI (Julien, EDH) construit ses prop
 
 **Statut :** ✅ livré.
 
+## Administration des utilisateurs
+
+Onglet niveau 1 `Admin` du header, **visible uniquement par les administrateurs** (Julien, Kelberg, Hassani au lancement). Les non-admins ne voient ni le tab ni l'URL `/admin` (404 si tentative directe).
+
+**Page Admin** : grille de cards, une par utilisateur :
+
+- Nom, email, badge `Admin` ou `Member`, badge `Vous` sur sa propre card, badge `Désactivé` rouge si applicable.
+- Dernière connexion en relatif ("il y a 2h" / "jamais").
+- Chips des écoles assignées à cet utilisateur (max 5 visibles, +N si plus).
+- Bouton crayon → ouvre le modal de modification.
+- Bouton désactiver (icône utilisateur barré) ou réactiver (icône utilisateur coché) à côté. Pas de bouton désactiver sur sa propre card.
+- Bouton `+ Inviter` en haut à droite.
+
+**Modal Inviter** : email + nom + mot de passe temporaire (auto-généré, copiable, régénérable à la volée) + grille des 9 écoles (toutes cochées par défaut, on décoche celles auxquelles on ne veut pas donner accès) + checkbox `Administrateur`. À la création, un toast affiche le mot de passe pendant 30 secondes pour qu'on puisse le copier-coller dans Slack/email vers la personne invitée.
+
+**Modal Modifier** : email read-only (immuable), nom modifiable, champ optionnel "Nouveau mot de passe" (vide = inchangé), grille des écoles, checkbox admin.
+
+**Désactivation (soft-delete)** : un user désactivé ne peut plus se logger (401 message générique au login), mais ses dashboards restent en DB pour audit. Réactivable à tout moment depuis la même page. On ne peut pas se désactiver soi-même, et on ne peut pas désactiver le dernier admin actif (l'API renvoie 400).
+
+**Accès par école** : chaque utilisateur a une liste explicite d'écoles auxquelles il a accès (table `user_school_access`). La sidebar et toutes les API user-facing filtrent en conséquence : un commercial qui n'a accès qu'à EFAP ne voit que EFAP dans la sidebar et reçoit 403 s'il tente d'accéder à une autre école par URL directe.
+
+**Statut :** ✅ livré (2026-05-01).
+
 ## Hébergement
 
 - Une seule app, un seul container Docker, sur le VPS OVH derrière NPM.
