@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast, Toaster } from "sonner";
 import { EventAccordion } from "./event-accordion";
+import { SubNavStats } from "../sub-nav-stats";
 
 interface MmEventListItem {
   event_ns: string;
@@ -80,20 +81,7 @@ export function StatsClient() {
     <div className="space-y-4">
       <Toaster richColors position="top-right" />
       <header className="flex justify-between items-center">
-        <nav className="flex gap-2">
-          <a
-            href="/urls"
-            className="px-3 py-1.5 rounded hover:bg-zinc-100 text-sm text-zinc-700"
-          >
-            URLs
-          </a>
-          <a
-            href="/stats"
-            className="px-3 py-1.5 rounded bg-zinc-900 text-white text-sm"
-          >
-            Stats
-          </a>
-        </nav>
+        <SubNavStats />
       </header>
 
       <div className="flex items-end gap-3 flex-wrap">

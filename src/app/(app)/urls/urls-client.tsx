@@ -14,6 +14,7 @@ import { toast, Toaster } from "sonner";
 import { NewEventDialog } from "./new-event-dialog";
 import { EditDestinationDialog } from "./edit-destination-dialog";
 import { VersionsDialog } from "./versions-dialog";
+import { SubNavStats } from "../sub-nav-stats";
 
 export interface EventRow {
   id: string;
@@ -96,20 +97,7 @@ export function UrlsClient({ publicBaseUrl }: { publicBaseUrl: string }) {
     <div className="space-y-4">
       <Toaster richColors position="top-right" />
       <header className="flex justify-between items-center">
-        <nav className="flex gap-2">
-          <a
-            href="/urls"
-            className="px-3 py-1.5 rounded bg-zinc-900 text-white text-sm"
-          >
-            URLs
-          </a>
-          <a
-            href="/stats"
-            className="px-3 py-1.5 rounded hover:bg-zinc-100 text-sm text-zinc-700"
-          >
-            Stats
-          </a>
-        </nav>
+        <SubNavStats />
         <Button onClick={() => setOpenNew(true)}>+ Nouvel événement</Button>
       </header>
 
