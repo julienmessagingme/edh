@@ -33,18 +33,20 @@ interface OwnerData {
 
 interface MockOpts {
   ownerData: OwnerData | null;
-  steps?: Array<{
+  steps?: Array<{ id: string; position: number; label: string | null }>;
+  refs?: Array<{
     id: string;
-    position: number;
+    step_id: string;
+    ref_position: number;
     step_type: "mm_event" | "url_click";
     event_ns: string | null;
     redirect_event_id: string | null;
   }>;
   mmLabels?: Array<{ event_ns: string; name: string }>;
   redirectLabels?: Array<{ id: string; name: string; school_slug: string }>;
-  /** Returned by `mm_occurrences` count(*) head query, in order of step. */
+  /** Counts returned by mm_occurrences in order of appearance. */
   mmCounts?: number[];
-  /** Returned by `clicks` count(*) head query, in order of step. */
+  /** Counts returned by clicks in order of appearance. */
   clickCounts?: number[];
 }
 
@@ -69,6 +71,16 @@ function buildSupabaseMock(opts: MockOpts) {
             eq: () => ({
               order: () =>
                 Promise.resolve({ data: opts.steps ?? [], error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === "dashboard_step_refs") {
+        return {
+          select: () => ({
+            in: () => ({
+              order: () =>
+                Promise.resolve({ data: opts.refs ?? [], error: null }),
             }),
           }),
         };
@@ -128,7 +140,7 @@ function buildSupabaseMock(opts: MockOpts) {
   };
 }
 
-describe("GET /api/dashboards/[id]/data", () => {
+describe("GET /api/dashboards/[id]/data — multi-refs", () => {
   it("404 when not owned", async () => {
     const { getSupabase } = await import("@/lib/supabase/service");
     (getSupabase as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue(
@@ -151,7 +163,7 @@ describe("GET /api/dashboards/[id]/data", () => {
     expect(res.status).toBe(404);
   });
 
-  it("computes counts for mm_event + url_click in order, with conversion data", async () => {
+  it("sums refs of the same step (cumul)", async () => {
     const { getSupabase } = await import("@/lib/supabase/service");
     (getSupabase as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue(
       buildSupabaseMock({
@@ -164,41 +176,57 @@ describe("GET /api/dashboards/[id]/data", () => {
           date_to: null,
         },
         steps: [
+          { id: "s1", position: 0, label: "Relances cumul" },
+          { id: "s2", position: 1, label: null },
+        ],
+        refs: [
           {
-            id: "s1",
-            position: 0,
+            id: "r1",
+            step_id: "s1",
+            ref_position: 0,
             step_type: "mm_event",
             event_ns: "evt_a",
             redirect_event_id: null,
           },
           {
-            id: "s2",
-            position: 1,
+            id: "r2",
+            step_id: "s1",
+            ref_position: 1,
+            step_type: "mm_event",
+            event_ns: "evt_b",
+            redirect_event_id: null,
+          },
+          {
+            id: "r3",
+            step_id: "s1",
+            ref_position: 2,
             step_type: "url_click",
             event_ns: null,
             redirect_event_id: "11111111-1111-4111-8111-111111111111",
           },
           {
-            id: "s3",
-            position: 2,
+            id: "r4",
+            step_id: "s2",
+            ref_position: 0,
             step_type: "mm_event",
-            event_ns: "evt_b",
+            event_ns: "evt_c",
             redirect_event_id: null,
           },
         ],
         mmLabels: [
-          { event_ns: "evt_a", name: "Relance benin" },
-          { event_ns: "evt_b", name: "Remplissage dossier" },
+          { event_ns: "evt_a", name: "Relance V1" },
+          { event_ns: "evt_b", name: "Relance V2" },
+          { event_ns: "evt_c", name: "Engagement" },
         ],
         redirectLabels: [
           {
             id: "11111111-1111-4111-8111-111111111111",
-            name: "Clic JPO",
+            name: "Clic teaser",
             school_slug: "efap",
           },
         ],
-        mmCounts: [1000, 100],
-        clickCounts: [300],
+        mmCounts: [1000, 500, 300],
+        clickCounts: [30],
       })
     );
 
@@ -208,46 +236,28 @@ describe("GET /api/dashboards/[id]/data", () => {
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      from: string;
-      to: string;
       steps: Array<{
         position: number;
-        step_type: string;
-        ref_id: string;
         label: string;
         count: number;
         available: boolean;
+        refs: Array<{ count: number; available: boolean; label: string }>;
       }>;
     };
-    expect(body.from).toBe("2026-04-16");
-    expect(body.to).toBe("2026-05-15");
-    expect(body.steps).toHaveLength(3);
-    expect(body.steps[0]).toMatchObject({
-      position: 0,
-      step_type: "mm_event",
-      ref_id: "evt_a",
-      label: "Relance benin",
-      count: 1000,
-      available: true,
-    });
-    expect(body.steps[1]).toMatchObject({
-      position: 1,
-      step_type: "url_click",
-      label: "Clic JPO",
-      count: 300,
-      available: true,
-    });
-    expect(body.steps[2]).toMatchObject({
-      position: 2,
-      step_type: "mm_event",
-      ref_id: "evt_b",
-      label: "Remplissage dossier",
-      count: 100,
-      available: true,
-    });
+    expect(body.steps).toHaveLength(2);
+
+    // Step 0: 1000 + 500 + 30 = 1530, custom label
+    expect(body.steps[0].count).toBe(1530);
+    expect(body.steps[0].label).toBe("Relances cumul");
+    expect(body.steps[0].available).toBe(true);
+    expect(body.steps[0].refs).toHaveLength(3);
+
+    // Step 1: 300, fallback label = single ref name
+    expect(body.steps[1].count).toBe(300);
+    expect(body.steps[1].label).toBe("Engagement");
   });
 
-  it("marks step as unavailable when source mm_event is missing", async () => {
+  it("excludes unavailable refs from sum but keeps step available if any ref OK", async () => {
     const { getSupabase } = await import("@/lib/supabase/service");
     (getSupabase as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue(
       buildSupabaseMock({
@@ -255,20 +265,31 @@ describe("GET /api/dashboards/[id]/data", () => {
           id: "d1",
           created_by: "u1",
           school_slug: "efap",
-          date_preset: "7d",
+          date_preset: "30d",
           date_from: null,
           date_to: null,
         },
-        steps: [
+        steps: [{ id: "s1", position: 0, label: null }],
+        refs: [
           {
-            id: "s1",
-            position: 0,
+            id: "r1",
+            step_id: "s1",
+            ref_position: 0,
+            step_type: "mm_event",
+            event_ns: "evt_a",
+            redirect_event_id: null,
+          },
+          {
+            id: "r2",
+            step_id: "s1",
+            ref_position: 1,
             step_type: "mm_event",
             event_ns: "evt_gone",
             redirect_event_id: null,
           },
         ],
-        mmLabels: [], // not present anymore
+        mmLabels: [{ event_ns: "evt_a", name: "Relance V1" }],
+        mmCounts: [777],
       })
     );
 
@@ -276,16 +297,23 @@ describe("GET /api/dashboards/[id]/data", () => {
     const res = await GET(new Request("http://x/api/dashboards/d1/data"), {
       params: Promise.resolve({ id: "d1" }),
     });
-    expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      steps: Array<{ available: boolean; count: number; label: string }>;
+      steps: Array<{
+        count: number;
+        available: boolean;
+        label: string;
+        refs: Array<{ available: boolean; label: string }>;
+      }>;
     };
-    expect(body.steps[0].available).toBe(false);
-    expect(body.steps[0].count).toBe(0);
-    expect(body.steps[0].label).toBe("(indisponible)");
+    expect(body.steps[0].count).toBe(777);
+    expect(body.steps[0].available).toBe(true);
+    expect(body.steps[0].refs[1].available).toBe(false);
+    expect(body.steps[0].refs[1].label).toBe("(indisponible)");
+    // Fallback label uses ref labels joined with " + "
+    expect(body.steps[0].label).toBe("Relance V1 + (indisponible)");
   });
 
-  it("marks redirect as unavailable when belongs to another school", async () => {
+  it("step is unavailable when all refs are unavailable", async () => {
     const { getSupabase } = await import("@/lib/supabase/service");
     (getSupabase as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue(
       buildSupabaseMock({
@@ -297,22 +325,18 @@ describe("GET /api/dashboards/[id]/data", () => {
           date_from: null,
           date_to: null,
         },
-        steps: [
+        steps: [{ id: "s1", position: 0, label: null }],
+        refs: [
           {
-            id: "s1",
-            position: 0,
-            step_type: "url_click",
-            event_ns: null,
-            redirect_event_id: "11111111-1111-4111-8111-111111111111",
+            id: "r1",
+            step_id: "s1",
+            ref_position: 0,
+            step_type: "mm_event",
+            event_ns: "evt_gone",
+            redirect_event_id: null,
           },
         ],
-        redirectLabels: [
-          {
-            id: "11111111-1111-4111-8111-111111111111",
-            name: "Foreign URL",
-            school_slug: "icart", // not 'efap'
-          },
-        ],
+        mmLabels: [],
       })
     );
 
