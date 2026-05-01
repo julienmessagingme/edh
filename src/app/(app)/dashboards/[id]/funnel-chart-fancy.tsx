@@ -6,7 +6,7 @@ import {
   FunnelArc,
   FunnelAxis,
   FunnelAxisLabel,
-  FunnelAxisLine,
+  ChartTooltip,
 } from "reaviz";
 import type { ComputedStep } from "@/lib/dashboards/types";
 
@@ -17,11 +17,8 @@ interface FunnelDataPoint {
 
 /**
  * Reaviz-based funnel chart : trapezoidal shape with purple glow.
- * Drop-in alternative to <FunnelChart> (the bar chart) — same props.
- *
- * Reaviz expects `data: { key: string, data: number }[]`. Empty steps
- * (count = 0) are kept so the funnel keeps its shape ; reaviz collapses
- * zero-data segments to a single line gracefully.
+ * Labels are not rendered next to the funnel — they appear in a tooltip
+ * on hover, for a cleaner visual.
  */
 export function FancyFunnelChart({ steps }: { steps: ComputedStep[] }) {
   if (steps.length === 0) return null;
@@ -31,11 +28,13 @@ export function FancyFunnelChart({ steps }: { steps: ComputedStep[] }) {
     data: s.count,
   }));
 
+  const height = Math.max(220, steps.length * 60);
+
   return (
-    <div className="w-full" style={{ height: Math.max(220, steps.length * 60) }}>
+    <div className="w-full" style={{ height }}>
       <FunnelChart
         id="dashboardFunnel"
-        height={Math.max(220, steps.length * 60)}
+        height={height}
         data={data}
         series={
           <FunnelSeries
@@ -47,14 +46,27 @@ export function FancyFunnelChart({ steps }: { steps: ComputedStep[] }) {
                   blur: 30,
                   color: "#5B14C5",
                 }}
+                tooltip={
+                  <ChartTooltip
+                    content={(d: { x?: string; y?: number; data?: FunnelDataPoint }) => {
+                      const label = d?.x ?? d?.data?.key ?? "";
+                      const count = d?.y ?? d?.data?.data ?? 0;
+                      return (
+                        <div className="bg-white border rounded shadow-md px-3 py-2 text-xs text-zinc-900">
+                          <div className="font-medium">{label}</div>
+                          <div className="tabular-nums">
+                            {count.toLocaleString("fr-FR")}
+                          </div>
+                        </div>
+                      );
+                    }}
+                  />
+                }
               />
             }
             axis={
               <FunnelAxis
-                label={
-                  <FunnelAxisLabel className="font-medium text-xs fill-zinc-700" />
-                }
-                line={<FunnelAxisLine strokeColor="#7E7E8F75" />}
+                label={<FunnelAxisLabel fill="transparent" />}
               />
             }
           />
