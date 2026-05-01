@@ -20,6 +20,8 @@ Déployé en Docker sur le VPS OVH `146.59.233.252` derrière NPM, sur le sous-d
 - **`docs/plans/2026-04-30-edh-stats-implementation.md`** — plan V1 (10 phases TDD)
 - **`docs/plans/2026-04-30-knowledge-base-design.md`** — design module Base de connaissance
 - **`docs/plans/2026-04-30-knowledge-base-implementation.md`** — plan module Base de connaissance
+- **`docs/plans/2026-05-01-dashboards-design.md`** — design module Mes tableaux
+- **`docs/plans/2026-05-01-dashboards-implementation.md`** — plan module Mes tableaux
 
 ## Commandes essentielles
 
@@ -93,5 +95,6 @@ NPM : proxy host id 12 `edh.messagingme.app` → `http://edh-app:3000`, SSL Let'
 | 9 — Déploiement VPS + NPM proxy + DNS + Let's Encrypt | ✅ |
 | 10 — Module Base de connaissance (4 modes upload + thèmes + Excel SSE) + code review | ✅ |
 | 11 — Rename EJF→EFJ (migration 003) + logos d'école / EDH groupe dans header + sidebar | ✅ |
+| 12 — Module Mes tableaux (custom dashboards funnel + dnd-kit + recharts) | ✅ |
 
-Container `edh-app` sur réseau Docker `mcp-robot_default` (NPM), proxy host id 12, cert Let's Encrypt id 13 (expires 2026-07-29). Cron 22:00 Europe/Paris actif. 9 écoles avec leur logo, ~3k occurrences messagingme ingérées. 9 vector stores OpenAI configurés (un par école) pour la base de connaissance. Logos servis depuis `/public/logos/<slug>.png` + `/logos/edh.png` (groupe), middleware whitelist `/logos/`.
+Container `edh-app` sur réseau Docker `mcp-robot_default` (NPM), proxy host id 12, cert Let's Encrypt id 13 (expires 2026-07-29). Cron 22:00 Europe/Paris actif. 9 écoles avec leur logo, ~3k occurrences messagingme ingérées. 9 vector stores OpenAI configurés (un par école) pour la base de connaissance. Logos servis depuis `/public/logos/<slug>.png` + `/logos/edh.png` (groupe), middleware whitelist `/logos/`. Module Mes tableaux : sub-nav 3 entrées (URLs / Stats / Mes tableaux), tableaux par-école et privés (`created_by`), drag-and-drop palette → funnel, auto-save 500ms, viz BarChart horizontal recharts.

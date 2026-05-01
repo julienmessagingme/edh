@@ -24,7 +24,7 @@
 
 Le header du dashboard expose deux grands modes :
 
-- **Stats** (par défaut) — pilote les URLs trackées et l'analytics MessagingMe. Sous-nav : `[URLs] [Stats]`.
+- **Stats** (par défaut) — pilote les URLs trackées, l'analytics MessagingMe et les tableaux personnalisés. Sous-nav : `[URLs] [Stats] [Mes tableaux]`.
 - **Base de connaissance** — alimente le vector store OpenAI de l'école courante (voir plus bas).
 
 Le contexte d'école (sidebar gauche) s'applique aux deux modes.
@@ -102,6 +102,30 @@ Un vector store OpenAI par école. Quand on uploade un fichier, un texte ou une 
 - Polling auto toutes les 5 s tant qu'un élément récent (< 60 s) est en cours d'indexation.
 
 **Switch d'école** : tout est rechargé sur la nouvelle école. La recherche, la page courante et les filtres se conservent.
+
+**Statut :** ✅ livré.
+
+## Mes tableaux (custom dashboards)
+
+Troisième sous-onglet de Stats. Chaque user UI (Julien, EDH) construit ses propres tableaux de pilotage par école, persistés en DB et privés à leur créateur (personne d'autre ne les voit).
+
+**Page liste `/dashboards`** :
+
+- Grille de cards : nom du tableau, type (funnel pour V1), date de dernière modification.
+- Bouton « + Nouveau funnel » → modal qui demande juste un nom → ouvre le builder.
+- Icône poubelle par card pour supprimer.
+
+**Builder `/dashboards/[id]`** :
+
+- En haut : nom éditable inline, sélecteurs de période (presets `7j / 30j / 90j` + dates `du / au` custom), bouton « Supprimer ».
+- À gauche, palette en deux sections : `Custom events MM` (les events messagingme de l'école) et `Clics URL` (les URLs trackées non archivées de l'école). On peut ajouter une étape par drag-and-drop **ou** par clic sur le « + » de l'item.
+- Au milieu, zone funnel : les étapes choisies dans l'ordre. Drag-and-drop pour réordonner, ✕ pour retirer. Une étape dont la source a disparu (event mm supprimé, URL archivée) s'affiche grisée avec un badge « indisponible ».
+- À droite, visualisation : bar chart horizontal recharts (longueur = volume), table récap (étape, volume, conversion vs étape précédente, conversion vs étape 1).
+- Auto-save : chaque modif (renommage, ordre, étapes, dates) est sauvegardée silencieusement après 500 ms (toast « Enregistrement… » discret en haut à droite).
+
+**Sémantique du funnel V1** : on compare des **volumes purs** d'occurrences sur la période. Pas de matching utilisateur entre étapes — c'est une vue esthétique pour repérer les ordres de grandeur et les ratios entre étapes consécutives, pas une analyse causale par utilisateur.
+
+**Switch d'école** : la liste et le builder se rechargent automatiquement (pattern `key={schoolSlug}`). Si l'on est sur le builder d'un tableau qui appartient à une autre école que celle qui vient d'être sélectionnée, l'API renvoie 404 et on est redirigé vers `/dashboards` avec un toast.
 
 **Statut :** ✅ livré.
 

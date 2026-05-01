@@ -15,6 +15,17 @@
 - **DST-safe daily buckets** : actuellement Phase 7 va probablement utiliser un offset hardcodé `+02:00` pour Paris. Si on constate un bug à un changement d'heure (mars/octobre), refacto pour calculer l'offset par-jour via `date-fns-tz`.
 - **Dashboard "tous écoles confondues"** : un onglet en plus de la sélection école qui agrège les 9. Pas demandé mais probable demande future.
 
+## Mes tableaux — évolutions post-V1
+
+- **Autres types de report** au-delà de `funnel` : graph temporel multi-events (lignes superposées), top-N par event, tableau de bord composite (plusieurs widgets sur une page). Étendre le `CHECK (type IN ('funnel'))` quand un nouveau type arrive.
+- **Partage entre users** : flag `is_shared` sur `dashboards`, lecture-only pour les autres users de la même école, duplication via bouton « Dupliquer pour modifier ». Préserver `created_by` comme propriétaire édition.
+- **Export CSV / PNG** du funnel (volumes + conversions, ou snapshot du chart).
+- **Comparaison de périodes** : "30j courants vs 30j précédents" affiché en barres jumelées + delta %.
+- **Embed / lien public** : un dashboard rendu en lecture seule sur une URL publique (avec rotation token). Surtout utile pour partager à un commercial qui n'a pas accès à l'outil.
+- **Re-saisir le label d'une étape au moment où on l'ajoute** : aujourd'hui le label est lookuppé dynamiquement depuis la palette. Si l'event source disparaît, on perd le label. Stocker le label au moment de l'ajout dans `dashboard_steps.label_snapshot` permettrait d'afficher quelque chose de plus utile que `(indisponible)`.
+- **Doublon protection** : empêcher le même event d'être ajouté deux fois au même funnel (UI seule, pas la DB). Trivial mais V1 KISS.
+- **Plafond N étapes** : au-delà de ~12 étapes le chart devient illisible — pas urgent mais à surveiller.
+
 ## Bugs / quirks à signaler
 
 - **Date filter messagingme** : l'API `/flow/custom-events/data` semble ignorer les paramètres `date_from` / `date_to` (testé pendant le brainstorming, retournait des données d'avril 2 même avec un filtre 20-30 avril). On contourne en stockant tout localement et filtrant côté Supabase. Si messagingme corrige, on peut potentiellement éviter l'ingest complet.

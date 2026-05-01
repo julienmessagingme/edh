@@ -147,12 +147,23 @@ clicks              (id, event_id FK, version_id FK, clicked_at, ip, user_agent,
 mm_events           (school_slug, event_ns) PK, name, description, *_label, last_synced_at
 mm_occurrences      (school_slug, id) PK, event_ns, user_ns, *_value, occurred_at
 mm_sync_state       (school_slug, event_ns) PK, last_occurrence_id, last_run_at, last_run_status, last_run_error
+knowledge_themes    (id, school_slug, name UNIQUE per school, created_at)
+knowledge_subthemes (id, school_slug, theme_id FK nullable, name UNIQUE per school)
+knowledge_items     (id, school_slug, type CHECK file|text|qa, file_name, title, question, answer,
+                     theme_id FK, subtheme_id FK, vector_store_file_id, openai_file_id, status, uploaded_by, uploaded_at)
+dashboards          (id, school_slug, created_by FK, name, type CHECK 'funnel',
+                     date_preset CHECK 7d|30d|90d|custom, date_from, date_to, created_at, updated_at)
+dashboard_steps     (id, dashboard_id FK, position, step_type CHECK mm_event|url_click,
+                     event_ns nullable, redirect_event_id FK nullable,
+                     CHECK exactly one ref, UNIQUE (dashboard_id, position))
 ```
 
 **Index** :
 - `idx_redirect_events_school_archived (school_slug, archived_at)`
 - `idx_clicks_event_clicked_at (event_id, clicked_at)`
 - `idx_mm_occurrences_school_event_occurred (school_slug, event_ns, occurred_at)`
+- `idx_dashboards_user_school (created_by, school_slug, updated_at DESC)`
+- `idx_dashboard_steps_dashboard (dashboard_id, position)`
 
 **Pas de RLS.** Service-role server-side uniquement. Les filtres `school_slug` sont appliqués côté app.
 

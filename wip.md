@@ -4,12 +4,13 @@
 
 ## En cours
 
-(rien — V1 + module Base de connaissance livrés en prod sur https://edh.messagingme.app)
+(rien — V1 + Base de connaissance + Mes tableaux livrés en prod sur https://edh.messagingme.app)
 
 ## À traiter dans la prochaine session
 
-(rien d'urgent — les 2 items différés ont été livrés le 2026-05-01 :
-rename ejf→efj + logos école/EDH dans sidebar et header).
+(rien d'urgent — Mes tableaux V1 vient d'être livré le 2026-05-01 ;
+les éventuelles évolutions, autres types de report, partage, export
+sont consignées dans `todo.md`).
 
 ## Notes opérationnelles à jour
 
