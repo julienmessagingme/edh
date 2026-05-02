@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Trash2, X, Plus, GripVertical } from "lucide-react";
+import { Trash2, X, Plus, GripVertical, Download } from "lucide-react";
 import {
   DndContext,
   DragEndEvent,
@@ -36,6 +36,10 @@ import { SubNavStats } from "../../sub-nav-stats";
 import { FunnelChart } from "./funnel-chart";
 import { FancyFunnelChart } from "./funnel-chart-fancy";
 import { FunnelTable } from "./funnel-table";
+import {
+  exportFunnelToExcel,
+  exportFunnelToPDF,
+} from "@/lib/dashboards/export";
 
 type FunnelView = "bar" | "funnel";
 const VIEW_STORAGE_KEY = "edh_funnel_view";
@@ -108,6 +112,8 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
   const [view, setView] = useState<FunnelView>("bar");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dataAbort = useRef<AbortController | null>(null);
+  const exportRef = useRef<HTMLDivElement>(null);
+  const [exporting, setExporting] = useState(false);
 
   // Restore the persisted view choice on mount.
   useEffect(() => {
@@ -307,6 +313,45 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
     setSteps((prev) =>
       prev.map((s, i) => (i === stepIdx ? { ...s, label } : s))
     );
+  }
+
+  function downloadExcel() {
+    if (!dashboard || !computed) return;
+    if (computed.steps.length === 0) {
+      toast.error("Aucune donnée à exporter");
+      return;
+    }
+    try {
+      exportFunnelToExcel({
+        dashboardName: dashboard.name,
+        fromDate: computed.from,
+        toDate: computed.to,
+        steps: computed.steps,
+      });
+    } catch {
+      toast.error("Erreur d'export Excel");
+    }
+  }
+
+  async function downloadPDF() {
+    if (!dashboard || !computed || !exportRef.current) return;
+    if (computed.steps.length === 0) {
+      toast.error("Aucune donnée à exporter");
+      return;
+    }
+    setExporting(true);
+    try {
+      await exportFunnelToPDF({
+        element: exportRef.current,
+        dashboardName: dashboard.name,
+        fromDate: computed.from,
+        toDate: computed.to,
+      });
+    } catch {
+      toast.error("Erreur d'export PDF");
+    } finally {
+      setExporting(false);
+    }
   }
 
   async function deleteDashboard() {
@@ -531,31 +576,55 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
           </StepsZone>
 
           <section className="bg-white border rounded-lg p-3 min-h-[200px] space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <h4 className="text-xs uppercase text-zinc-500">Funnel</h4>
-              <div className="flex border rounded overflow-hidden text-xs">
-                <button
-                  onClick={() => changeView("bar")}
-                  className={`px-2 py-1 ${
-                    view === "bar"
-                      ? "bg-zinc-900 text-white"
-                      : "bg-white text-zinc-600 hover:bg-zinc-50"
-                  }`}
-                  aria-pressed={view === "bar"}
-                >
-                  Barres
-                </button>
-                <button
-                  onClick={() => changeView("funnel")}
-                  className={`px-2 py-1 border-l ${
-                    view === "funnel"
-                      ? "bg-zinc-900 text-white"
-                      : "bg-white text-zinc-600 hover:bg-zinc-50"
-                  }`}
-                  aria-pressed={view === "funnel"}
-                >
-                  Entonnoir
-                </button>
+              <div className="flex items-center gap-2">
+                <div className="flex border rounded overflow-hidden text-xs">
+                  <button
+                    onClick={() => changeView("bar")}
+                    className={`px-2 py-1 ${
+                      view === "bar"
+                        ? "bg-zinc-900 text-white"
+                        : "bg-white text-zinc-600 hover:bg-zinc-50"
+                    }`}
+                    aria-pressed={view === "bar"}
+                  >
+                    Barres
+                  </button>
+                  <button
+                    onClick={() => changeView("funnel")}
+                    className={`px-2 py-1 border-l ${
+                      view === "funnel"
+                        ? "bg-zinc-900 text-white"
+                        : "bg-white text-zinc-600 hover:bg-zinc-50"
+                    }`}
+                    aria-pressed={view === "funnel"}
+                  >
+                    Entonnoir
+                  </button>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    className="inline-flex items-center gap-1 border rounded px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                    disabled={
+                      exporting ||
+                      !computed ||
+                      computed.steps.length === 0
+                    }
+                    aria-label="Télécharger"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    {exporting ? "Export…" : "Télécharger"}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={downloadExcel}>
+                      Excel (.xlsx) — tableau
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={downloadPDF}>
+                      PDF — chart + tableau
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
             {dashboard.steps.length === 0 ? (
@@ -571,7 +640,7 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
                 Impossible de charger les données.
               </p>
             ) : computed && computed.steps.length > 0 ? (
-              <div className="space-y-4">
+              <div ref={exportRef} className="space-y-4 bg-white">
                 {(computed.from || computed.to) && (
                   <p className="text-xs text-zinc-500">
                     Période : {computed.from} → {computed.to}
