@@ -14,6 +14,9 @@ export interface School {
  */
 export const EDH_GROUP_LOGO = "/logos/edh.png";
 
+/** Logo MessagingMe (rendu dans le footer du shell auth-gated). */
+export const MESSAGINGME_LOGO = "/logos/messagingme.png";
+
 export const SCHOOLS: readonly School[] = [
   { slug: "efap",         name: "EFAP",         tokenEnv: "MM_TOKEN_EFAP",         vectorStoreEnv: "OPENAI_VS_EFAP",         logo: "/logos/efap.png" },
   { slug: "3wa",          name: "3WA",          tokenEnv: "MM_TOKEN_3WA",          vectorStoreEnv: "OPENAI_VS_3WA",          logo: "/logos/3wa.png" },

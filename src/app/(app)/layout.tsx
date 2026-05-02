@@ -3,7 +3,7 @@ import { Sidebar } from "./sidebar";
 import { HeaderTabs } from "./header-tabs";
 import { getCurrentSchoolSlug } from "@/lib/schools/context";
 import { getCurrentUserSchools } from "@/lib/schools/access";
-import { SCHOOLS, EDH_GROUP_LOGO } from "@/lib/schools";
+import { SCHOOLS, EDH_GROUP_LOGO, MESSAGINGME_LOGO } from "@/lib/schools";
 import { requireUser } from "@/lib/auth/require-user";
 import { getSupabase } from "@/lib/supabase/service";
 
@@ -55,6 +55,18 @@ export default async function AppLayout({
         />
         <main className="flex-1 p-6">{children}</main>
       </div>
+
+      <footer className="bg-white border-t px-4 py-3 flex items-center justify-center gap-2 text-xs text-zinc-500">
+        <span>Propulsé par</span>
+        <Image
+          src={MESSAGINGME_LOGO}
+          alt="MessagingMe"
+          width={120}
+          height={24}
+          className="h-5 w-auto object-contain"
+          unoptimized
+        />
+      </footer>
     </div>
   );
 }
