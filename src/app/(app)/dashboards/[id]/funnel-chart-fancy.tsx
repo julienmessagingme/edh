@@ -64,8 +64,9 @@ export function FancyFunnelChart({ steps }: { steps: ComputedStep[] }) {
         }
       />
 
-      {/* Hover overlay : une bande par étape, au-dessus du SVG. */}
-      <div className="absolute inset-0 flex flex-col">
+      {/* Hover overlay : une bande verticale par étape (le funnel reaviz
+          est rendu horizontalement, large à gauche → étroit à droite). */}
+      <div className="absolute inset-0 flex flex-row">
         {data.map((d, i) => (
           <div
             key={`${i}-${d.key}`}
