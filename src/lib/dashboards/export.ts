@@ -71,8 +71,9 @@ export function exportFunnelToExcel(args: {
 
 /**
  * Capture le DOM de l'élément (chart + tableau) en image puis l'incorpore
- * dans un PDF A4 paysage avec un titre. Les libs sont chargées à la
- * demande (`import()`) pour ne pas alourdir le bundle initial.
+ * dans un PDF A4 paysage avec un titre. Utilise `html-to-image` qui gère
+ * les couleurs Tailwind v4 en `oklch()` (`html2canvas` ne sait pas les
+ * parser). Libs chargées à la demande (`import()`).
  */
 export async function exportFunnelToPDF(args: {
   element: HTMLElement;
@@ -82,18 +83,24 @@ export async function exportFunnelToPDF(args: {
 }) {
   const { element, dashboardName, fromDate, toDate } = args;
 
-  const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
-    import("html2canvas"),
+  const [{ toPng }, { default: jsPDF }] = await Promise.all([
+    import("html-to-image"),
     import("jspdf"),
   ]);
 
-  const canvas = await html2canvas(element, {
+  const dataUrl = await toPng(element, {
     backgroundColor: "#ffffff",
-    scale: 2,
-    useCORS: true,
-    logging: false,
+    pixelRatio: 2,
+    cacheBust: true,
   });
-  const imgData = canvas.toDataURL("image/png");
+
+  // Récupère les dimensions natives de l'image pour calculer le ratio.
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = reject;
+    i.src = dataUrl;
+  });
 
   const pdf = new jsPDF({
     orientation: "landscape",
@@ -105,7 +112,6 @@ export async function exportFunnelToPDF(args: {
   const pageHeight = pdf.internal.pageSize.getHeight();
   const margin = 32;
 
-  // Titre + métadonnées
   pdf.setFontSize(18);
   pdf.setFont("helvetica", "bold");
   pdf.text(dashboardName, margin, margin + 8);
@@ -120,24 +126,16 @@ export async function exportFunnelToPDF(args: {
   );
   pdf.setTextColor(0);
 
-  // Image du chart + tableau, scalée à la largeur disponible
   const availWidth = pageWidth - margin * 2;
   const availHeight = pageHeight - margin * 2 - 48;
-  const ratio = canvas.height / canvas.width;
+  const ratio = img.height / img.width;
   let drawWidth = availWidth;
   let drawHeight = drawWidth * ratio;
   if (drawHeight > availHeight) {
     drawHeight = availHeight;
     drawWidth = drawHeight / ratio;
   }
-  pdf.addImage(
-    imgData,
-    "PNG",
-    margin,
-    margin + 48,
-    drawWidth,
-    drawHeight
-  );
+  pdf.addImage(dataUrl, "PNG", margin, margin + 48, drawWidth, drawHeight);
 
   pdf.save(`${fileSafeName(dashboardName)}.pdf`);
 }
