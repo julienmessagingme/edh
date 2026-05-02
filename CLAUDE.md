@@ -1,9 +1,9 @@
-# CLAUDE.md — EDH Stats
+# CLAUDE.md — EDH Dashboard
 
 Dashboard multi-écoles pour le client EDH. Cinq fonctions :
 
 1. **URLs trackées** pour templates WhatsApp — slug court → redirect 302 server-side, comptage des clics.
-2. **Stats** — récupère les custom events via l'API messagingme et permet de comparer leur volumétrie aux clics URL (ratios).
+2. **Stats** — deux sections séparées : (a) volumétrie journalière de chaque custom event mm, (b) volumétrie journalière des clics par URL trackée. Filtre période commun.
 3. **Mes tableaux** — chaque user UI construit ses propres funnels par école. Chaque étape peut **cumuler** plusieurs events (mm + URL mixés), volumes sommés. Drag-and-drop palette → étape (nouvelle ou existante), label éditable par étape, viz bar chart recharts. Persistés en DB et privés.
 4. **Base de connaissance** — alimente le vector store OpenAI de chaque école (4 modes : fichier PDF/TXT, saisie texte, Q/R structurées avec thèmes, import Excel en masse). Gère un vector store par école.
 5. **Admin** — onglet visible uniquement par les admins (Julien, Kelberg, Hassani au moment de l'écriture). Permet d'inviter de nouveaux utilisateurs, de cocher leurs écoles d'accès, et de désactiver les comptes. Les non-admins ne voient ni le tab ni l'URL `/admin`.
@@ -15,7 +15,7 @@ Déployé en Docker sur le VPS OVH `146.59.233.252` derrière NPM, sur le sous-d
 ## Documentation
 
 - **`documentation.md`** — archi, stack, schéma DB, env vars, déploiement, patterns code
-- **`features.md`** — vue produit : URLs + Stats + Base de connaissance côté utilisateur
+- **`features.md`** — vue produit : URLs + Stats + Mes tableaux + Base de connaissance + Admin côté utilisateur
 - **`wip.md`** — travail en cours
 - **`todo.md`** — backlog (RGPD, retention, export, cleanup orphans OpenAI, etc.)
 - **`docs/plans/2026-04-30-edh-stats-design.md`** — design V1 (URLs + Stats)
@@ -81,6 +81,7 @@ NPM : proxy host id 12 `edh.messagingme.app` → `http://edh-app:3000`, SSL Let'
 - **Base de connaissance** : OpenAI = source de vérité (vector store par école), Supabase = métadata. DELETE flow : best-effort cleanup OpenAI + DB delete inconditionnel (orphan files acceptés plutôt que ghost rows).
 - **Pas de RLS Supabase.** L'app utilise le service-role server-side uniquement, jamais d'accès DB depuis le client.
 - **UI 100% française** dans les strings affichées.
+- **Export PDF : `html-to-image`, pas `html2canvas`.** Tailwind v4 émet des couleurs en `oklch()` que `html2canvas` ne sait pas parser → canvas vide. `html-to-image` les supporte. `jspdf` + `html-to-image` sont chargés en dynamic import (`import()`) dans `src/lib/dashboards/export.ts` pour ne pas alourdir le bundle initial.
 
 ## État courant (2026-05-01)
 
@@ -103,5 +104,9 @@ NPM : proxy host id 12 `edh.messagingme.app` → `http://edh-app:3000`, SSL Let'
 | 12 — Module Mes tableaux (custom dashboards funnel + dnd-kit + recharts) | ✅ |
 | 13 — Mes tableaux : étapes cumulées (multi-refs par step, migration 005, label éditable) | ✅ |
 | 14 — Module Admin (is_admin + user_school_access + invite/désactivation, migration 006) | ✅ |
+| 15 — Mes tableaux : toggle viz Barres / Entonnoir (reaviz purple+glow + tooltip custom) | ✅ |
+| 16 — Mes tableaux : export Excel (xlsx) + PDF (chart + tableau, html-to-image + jspdf) | ✅ |
+| 17 — Stats refactor : suppression comparaison URL dans accordéons custom events + nouvelle section "Clics URL trackées" séparée | ✅ |
+| 18 — Rename EDH Stats → EDH Dashboard + footer logo MessagingMe (`/logos/messagingme.png`) | ✅ |
 
-Container `edh-app` sur réseau Docker `mcp-robot_default` (NPM), proxy host id 12, cert Let's Encrypt id 13 (expires 2026-07-29). Cron 22:00 Europe/Paris actif. 9 écoles avec leur logo, ~3k occurrences messagingme ingérées. 9 vector stores OpenAI configurés (un par école) pour la base de connaissance. Logos servis depuis `/public/logos/<slug>.png` + `/logos/edh.png` (groupe), middleware whitelist `/logos/`. Module Mes tableaux : tables `dashboards` + `dashboard_steps` + `dashboard_step_refs` (multi-refs par step pour cumul de volumes), auto-save 500ms via PATCH atomique (delete cascade puis re-insert steps + refs), lib drag-and-drop `@dnd-kit/core`+`@dnd-kit/sortable` (~12kB).
+Container `edh-app` sur réseau Docker `mcp-robot_default` (NPM), proxy host id 12, cert Let's Encrypt id 13 (expires 2026-07-29). Cron 22:00 Europe/Paris actif. 9 écoles avec leur logo, ~3k occurrences messagingme ingérées. 9 vector stores OpenAI configurés (un par école) pour la base de connaissance. Logos servis depuis `/public/logos/<slug>.png` + `/logos/edh.png` (groupe) + `/logos/messagingme.png` (footer "Propulsé par"), middleware whitelist `/logos/`. Module Mes tableaux : tables `dashboards` + `dashboard_steps` + `dashboard_step_refs` (multi-refs par step pour cumul de volumes), auto-save 500ms via PATCH atomique (delete cascade puis re-insert steps + refs). Libs charts/UI : `@dnd-kit/core`+`@dnd-kit/sortable` (drag-and-drop), `recharts` (bar chart) + `reaviz` (funnel trapézoïdal), `xlsx` + `jspdf` + `html-to-image` (export Excel/PDF, dynamic import).

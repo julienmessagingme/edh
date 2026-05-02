@@ -1,33 +1,35 @@
-# Features — EDH Stats
+# Features — EDH Dashboard
 
 > Vue produit, sans détail technique. Pour la doc tech : `documentation.md`.
 
 ## Authentification
 
 - Login email + mot de passe.
-- 2 utilisateurs : Julien et EDH, mêmes droits.
+- Comptes créés/désactivés par les administrateurs depuis l'onglet Admin (cf. plus bas). Au lancement : Julien, Kelberg, Hassani (admins) + utilisateurs invités côté EDH au fil de l'eau.
 - Session 7 jours, cookie HttpOnly.
-- Pas de signup UI, pas de reset password (outil interne, comptes seedés).
+- Pas de self-service password change ni reset password V1 — l'admin réinitialise depuis le modal Modifier.
 
 **Statut :** ✅ livré.
 
 ## Switch d'école (sidebar)
 
-- Sidebar gauche fixe avec les 9 écoles (logo + nom) : EFAP, 3WA, Brassart, CESINE, EFJ, ESEC, École Bleue, ICART, IFA. Logo du groupe EDH en haut à gauche du header, tabs `[Stats] [Base de connaissance]` immédiatement à droite.
-- Cliquer une école change le contexte de toute l'app — URLs et Stats se filtrent automatiquement sur l'école sélectionnée.
-- Le choix persiste 1 an dans un cookie. Au premier login, on est par défaut sur EFAP.
+- Sidebar gauche fixe avec **uniquement les écoles auxquelles l'utilisateur a accès** (cf. Administration). Un user qui n'a accès qu'à EFAP ne verra que EFAP. Catalogue complet des 9 écoles : EFAP, 3WA, Brassart, CESINE, EFJ, ESEC, École Bleue, ICART, IFA.
+- Logo du groupe EDH en haut à gauche du header. Footer `Propulsé par <logo MessagingMe>` en bas de toutes les pages auth.
+- Cliquer une école change le contexte de toute l'app — URLs, Stats, Mes tableaux et Base de connaissance se filtrent automatiquement.
+- Le choix persiste 1 an dans un cookie. Si la school du cookie n'est plus accessible (admin a retiré l'accès), bascule auto sur la 1<sup>re</sup> école accessible.
 - Bouton « Se déconnecter » en bas de la sidebar.
 
 **Statut :** ✅ livré.
 
 ## Onglets de niveau 1
 
-Le header du dashboard expose deux grands modes :
+Le header expose 2 ou 3 grands modes selon le rôle :
 
-- **Stats** (par défaut) — pilote les URLs trackées, l'analytics MessagingMe et les tableaux personnalisés. Sous-nav : `[URLs] [Stats] [Mes tableaux]`.
+- **Stats** (par défaut) — URLs trackées + analytics MessagingMe + tableaux personnalisés. Sous-nav : `[URLs] [Stats] [Mes tableaux]`.
 - **Base de connaissance** — alimente le vector store OpenAI de l'école courante (voir plus bas).
+- **Admin** — visible **uniquement par les administrateurs**. Gestion des utilisateurs (voir plus bas).
 
-Le contexte d'école (sidebar gauche) s'applique aux deux modes.
+Le contexte d'école (sidebar gauche) s'applique à tous ces modes.
 
 **Statut :** ✅ livré.
 
@@ -55,15 +57,12 @@ Le contexte d'école (sidebar gauche) s'applique aux deux modes.
 
 ## Onglet « Stats »
 
-- Sélecteur de période en haut : presets 7j / 30j / 90j + custom (deux date pickers).
-- Liste accordéons : un accordéon par custom event MessagingMe de l'école courante.
-- Quand on ouvre un accordéon :
-  - Histogramme journalier des occurrences en Europe/Paris.
-  - Dropdown « Comparer avec… » qui liste les URLs trackées de la même école.
-  - En sélectionnant une URL : bar chart à 2 séries (occurrences + clics) + courbe du taux de clic quotidien (clics/occurrences).
-  - Bandeau résumé : taux global, taux moyen quotidien, totaux.
+- Sélecteur de période en haut : presets 7j / 30j / 90j + custom (deux date pickers). S'applique aux deux sections.
+- **Section 1 — Custom events MessagingMe** : un accordéon par custom event de l'école courante. À l'ouverture, histogramme journalier bleu des occurrences en Europe/Paris.
+- **Section 2 — Clics URL trackées** : un accordéon par URL non-archivée de l'école courante (avec son slug `/r/<slug>` en sous-titre). À l'ouverture, histogramme journalier vert des clics en Europe/Paris.
+- Pas de comparaison directe entre les deux dans cet onglet — pour ça, utiliser **Mes tableaux** qui permet de mixer custom events et clics URL dans des funnels personnalisés.
 - Bouton « ⟳ Re-sync » en bas pour relancer un sync manuel hors de 22:00.
-- Affiche aussi la date du dernier sync MessagingMe.
+- Affiche aussi la date du dernier sync MessagingMe et un compteur d'erreurs de sync si applicable.
 
 **Statut :** ✅ livré.
 
@@ -120,7 +119,14 @@ Troisième sous-onglet de Stats. Chaque user UI (Julien, EDH) construit ses prop
 - En haut : nom éditable inline, sélecteurs de période (presets `7j / 30j / 90j` + dates `du / au` custom), bouton « Supprimer ».
 - À gauche, palette en deux sections : `Custom events MM` (les events messagingme de l'école) et `Clics URL` (les URLs trackées non archivées de l'école). On glisse un item de la palette vers la zone d'étapes pour créer une nouvelle étape, ou vers une étape existante pour **cumuler** la source dans cette étape.
 - Au milieu, zone funnel : les étapes choisies dans l'ordre. Chaque étape a un **label éditable** (placeholder = composition auto `A + B + C`), une badge `MM / URL / Mixte`, et une liste de **chips** pour ses sources. Bouton `+ Ajouter` dans chaque étape pour ajouter une source via menu déroulant. Drag-and-drop pour réordonner les étapes, ✕ pour retirer une chip (si dernière chip → l'étape entière est supprimée), poubelle pour supprimer toute l'étape. Une chip dont la source a disparu (event mm supprimé, URL archivée) s'affiche grisée.
-- À droite, visualisation : bar chart horizontal recharts (longueur = volume **cumulé** des sources de l'étape), table récap (étape, volume, conversion vs étape précédente, conversion vs étape 1, breakdown des sources individuelles si > 1).
+- À droite, visualisation avec **toggle 2 modes** :
+  - **Barres** (par défaut) : bar chart horizontal recharts, longueur = volume cumulé des sources de l'étape.
+  - **Entonnoir** : funnel trapézoïdal reaviz purple+glow, conteneur light avec halo subtil. Pas de labels écrits dans l'entonnoir → tooltip premium au hover (étape + volume + conversion vs précédent + conversion vs étape 1).
+  Le choix de mode est persisté en `localStorage` par navigateur.
+- Sous le chart : table récap (étape, volume, conv. vs précédent, conv. vs étape 1, breakdown des sources individuelles si > 1).
+- **Bouton Télécharger** : menu déroulant avec deux options :
+  - **Excel (.xlsx)** : tableau seul (entêtes + lignes + sous-lignes pour les cumuls), avec metadata (nom du tableau, période, date d'export).
+  - **PDF** : capture du chart actif (Barres ou Entonnoir selon ton choix de toggle) + tableau, en A4 paysage avec titre.
 - Auto-save : chaque modif (renommage, ordre, étapes, sources, dates, label) est sauvegardée silencieusement après 500 ms (toast « Enregistrement… » discret en haut à droite).
 
 **Étapes cumulées (rapports cumul)** : on peut empiler plusieurs sources dans une même étape — par exemple `relance benin V1` + `relance benin V2` + `relance ICART V1` formant l'étape `Relances`, dont le volume affiché = somme des trois. Mix mm + URL autorisé. Si une source disparaît, l'étape continue de fonctionner avec les sources restantes ; l'étape n'est marquée « indisponible » que si toutes ses sources ont disparu.
@@ -154,10 +160,12 @@ Onglet niveau 1 `Admin` du header, **visible uniquement par les administrateurs*
 
 **Statut :** ✅ livré (2026-05-01).
 
-## Hébergement
+## Hébergement & branding
 
+- Nom officiel de l'app : **EDH Dashboard** (titre `<title>` du navigateur, H1 du login).
 - Une seule app, un seul container Docker, sur le VPS OVH derrière NPM.
 - Sous-domaine `edh.messagingme.app` (DNS Cloudflare A record proxied).
 - Déploiement par `git pull && docker compose up -d --build` sur le VPS.
+- Footer `Propulsé par <logo MessagingMe>` rendu sur toutes les pages auth-gated.
 
 **Statut :** ✅ livré.

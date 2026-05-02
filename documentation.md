@@ -1,4 +1,4 @@
-# Documentation technique — EDH Stats
+# Documentation technique — EDH Dashboard
 
 > Reference technique : archi, stack, schéma DB, déploiement, patterns code.
 > Pour la vue produit : `features.md`. Pour le WIP : `wip.md`.
