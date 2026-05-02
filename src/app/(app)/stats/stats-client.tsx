@@ -7,12 +7,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast, Toaster } from "sonner";
 import { EventAccordion } from "./event-accordion";
+import { RedirectAccordion } from "./redirect-accordion";
 import { SubNavStats } from "../sub-nav-stats";
 
 interface MmEventListItem {
   event_ns: string;
   name: string;
   description: string | null;
+  count: number;
+}
+
+interface RedirectListItem {
+  id: string;
+  slug: string;
+  name: string;
   count: number;
 }
 
@@ -34,6 +42,7 @@ function presetDates(days: number) {
 export function StatsClient() {
   const [{ from, to }, setRange] = useState(() => presetDates(30));
   const [events, setEvents] = useState<MmEventListItem[]>([]);
+  const [redirects, setRedirects] = useState<RedirectListItem[]>([]);
   const [syncs, setSyncs] = useState<SyncState[]>([]);
   const [loading, setLoading] = useState(false);
   const [resyncing, setResyncing] = useState(false);
@@ -41,12 +50,20 @@ export function StatsClient() {
   async function load() {
     setLoading(true);
     try {
-      const r = await fetch(
-        `/api/stats/custom-events?from=${from}&to=${to}`
-      );
-      const j = await r.json();
-      setEvents(j.events ?? []);
-      setSyncs(j.syncs ?? []);
+      const [evRes, urlRes] = await Promise.all([
+        fetch(`/api/stats/custom-events?from=${from}&to=${to}`),
+        fetch(`/api/stats/redirects?from=${from}&to=${to}`),
+      ]);
+      const evJson = (await evRes.json()) as {
+        events?: MmEventListItem[];
+        syncs?: SyncState[];
+      };
+      const urlJson = (await urlRes.json()) as {
+        redirects?: RedirectListItem[];
+      };
+      setEvents(evJson.events ?? []);
+      setSyncs(evJson.syncs ?? []);
+      setRedirects(urlJson.redirects ?? []);
     } catch {
       toast.error("Erreur de chargement");
     } finally {
@@ -116,29 +133,51 @@ export function StatsClient() {
         </Button>
       </div>
 
-      <h2 className="text-xl font-semibold">Custom events MessagingMe</h2>
+      <section className="space-y-2">
+        <h2 className="text-xl font-semibold">Custom events MessagingMe</h2>
+        {loading ? (
+          <p className="text-zinc-500">Chargement…</p>
+        ) : events.length === 0 ? (
+          <p className="text-zinc-500">
+            Aucun custom event pour cette école. Lancez un sync via le bouton ⟳
+            en bas de page.
+          </p>
+        ) : (
+          <Accordion multiple className="space-y-2">
+            {events.map((ev) => (
+              <EventAccordion key={ev.event_ns} ev={ev} from={from} to={to} />
+            ))}
+          </Accordion>
+        )}
+      </section>
 
-      {loading ? (
-        <p className="text-zinc-500">Chargement…</p>
-      ) : events.length === 0 ? (
-        <p className="text-zinc-500">
-          Aucun custom event pour cette école. Lancez un sync via le bouton ⟳
-          en bas de page.
-        </p>
-      ) : (
-        <Accordion multiple className="space-y-2">
-          {events.map((ev) => (
-            <EventAccordion key={ev.event_ns} ev={ev} from={from} to={to} />
-          ))}
-        </Accordion>
-      )}
+      <section className="space-y-2 pt-4">
+        <h2 className="text-xl font-semibold">Clics URL trackées</h2>
+        {loading ? (
+          <p className="text-zinc-500">Chargement…</p>
+        ) : redirects.length === 0 ? (
+          <p className="text-zinc-500">
+            Aucune URL trackée pour cette école. Créez-en une dans l&apos;onglet
+            URLs.
+          </p>
+        ) : (
+          <Accordion multiple className="space-y-2">
+            {redirects.map((r) => (
+              <RedirectAccordion
+                key={r.id}
+                redirect={r}
+                from={from}
+                to={to}
+              />
+            ))}
+          </Accordion>
+        )}
+      </section>
 
       <footer className="text-xs text-zinc-500 flex items-center gap-4 pt-4 border-t">
         <span>
           Dernier sync MessagingMe :{" "}
-          {lastSync
-            ? new Date(lastSync).toLocaleString("fr-FR")
-            : "—"}
+          {lastSync ? new Date(lastSync).toLocaleString("fr-FR") : "—"}
           {errorEvents.length > 0 && (
             <span className="ml-2 text-red-600">
               ⚠️ {errorEvents.length} erreur
@@ -146,7 +185,12 @@ export function StatsClient() {
             </span>
           )}
         </span>
-        <Button size="sm" variant="ghost" onClick={manualResync} disabled={resyncing}>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={manualResync}
+          disabled={resyncing}
+        >
           {resyncing ? "Sync en cours…" : "⟳ Re-sync"}
         </Button>
       </footer>

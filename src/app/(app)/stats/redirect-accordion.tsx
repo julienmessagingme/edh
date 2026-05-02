@@ -20,12 +20,12 @@ interface DailyPoint {
   count: number;
 }
 
-export function EventAccordion({
-  ev,
+export function RedirectAccordion({
+  redirect,
   from,
   to,
 }: {
-  ev: { event_ns: string; name: string; count: number };
+  redirect: { id: string; slug: string; name: string; count: number };
   from: string;
   to: string;
 }) {
@@ -37,7 +37,7 @@ export function EventAccordion({
     if (opened) return;
     setOpened(true);
     const j = await fetch(
-      `/api/stats/custom-events/${encodeURIComponent(ev.event_ns)}/daily?from=${from}&to=${to}`
+      `/api/stats/clicks/${redirect.id}/daily?from=${from}&to=${to}`
     ).then((r) => r.json());
     setSeries(j.series ?? []);
   }
@@ -46,9 +46,7 @@ export function EventAccordion({
     if (!opened) return;
     const sToken = ++seriesToken.current;
     setSeries(null);
-    fetch(
-      `/api/stats/custom-events/${encodeURIComponent(ev.event_ns)}/daily?from=${from}&to=${to}`
-    )
+    fetch(`/api/stats/clicks/${redirect.id}/daily?from=${from}&to=${to}`)
       .then((r) => r.json())
       .then((j) => {
         if (seriesToken.current === sToken) setSeries(j.series ?? []);
@@ -56,28 +54,29 @@ export function EventAccordion({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to]);
 
-  const totalOcc = (series ?? []).reduce((s, p) => s + p.count, 0);
+  const total = (series ?? []).reduce((s, p) => s + p.count, 0);
 
   return (
-    <AccordionItem value={ev.event_ns} className="border rounded bg-white">
+    <AccordionItem value={redirect.id} className="border rounded bg-white">
       <AccordionTrigger
         onClick={loadOnOpen}
         className="px-4 hover:no-underline"
       >
-        <div className="flex justify-between w-full pr-2">
-          <span className="font-medium">{ev.name}</span>
-          <span className="text-zinc-500 text-sm">
-            {ev.count} occurrence{ev.count !== 1 ? "s" : ""}
+        <div className="flex justify-between w-full pr-2 items-baseline gap-3">
+          <div className="flex flex-col items-start min-w-0">
+            <span className="font-medium truncate">{redirect.name}</span>
+            <code className="text-xs text-zinc-400">/r/{redirect.slug}</code>
+          </div>
+          <span className="text-zinc-500 text-sm shrink-0">
+            {redirect.count} clic{redirect.count !== 1 ? "s" : ""}
           </span>
         </div>
       </AccordionTrigger>
       <AccordionContent className="px-4 pb-4">
         {!series ? (
           <p className="text-sm text-zinc-500">Chargement…</p>
-        ) : series.length === 0 || totalOcc === 0 ? (
-          <p className="text-sm text-zinc-500">
-            Aucune occurrence sur la période.
-          </p>
+        ) : series.length === 0 || total === 0 ? (
+          <p className="text-sm text-zinc-500">Aucun clic sur la période.</p>
         ) : (
           <div className="h-56">
             <ResponsiveContainer>
@@ -85,7 +84,7 @@ export function EventAccordion({
                 <XAxis dataKey="day" fontSize={10} />
                 <YAxis fontSize={10} />
                 <Tooltip />
-                <Bar dataKey="count" fill="#3b82f6" name="Occurrences" />
+                <Bar dataKey="count" fill="#10b981" name="Clics" />
               </BarChart>
             </ResponsiveContainer>
           </div>
