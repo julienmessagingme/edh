@@ -178,42 +178,25 @@ export async function PATCH(
   }
 
   if (parsed.data.steps !== undefined) {
-    // Cascade : delete des steps supprime aussi les refs (FK ON DELETE CASCADE).
-    const { error: delErr } = await sb
-      .from("dashboard_steps")
-      .delete()
-      .eq("dashboard_id", id);
-    if (delErr)
-      return NextResponse.json({ error: delErr.message }, { status: 500 });
-
-    for (let i = 0; i < parsed.data.steps.length; i++) {
-      const step = parsed.data.steps[i];
-      const { data: stepRow, error: stepErr } = await sb
-        .from("dashboard_steps")
-        .insert({
-          dashboard_id: id,
-          position: i,
-          label: step.label ?? null,
-        })
-        .select("id")
-        .single();
-      if (stepErr)
-        return NextResponse.json({ error: stepErr.message }, { status: 500 });
-
-      const refRows = step.refs.map((r, ri) => ({
-        step_id: stepRow.id,
-        ref_position: ri,
+    // Atomic replace via RPC PL/pgSQL (cf. supabase/migrations/007).
+    // Avant : DELETE + N INSERTs sequentiels sans transaction -> un crash
+    // au milieu laissait le dashboard avec une moitie de steps. Maintenant
+    // tout est dans une transaction PG, rollback automatique sur erreur.
+    const stepsPayload = parsed.data.steps.map((step) => ({
+      label: step.label ?? null,
+      refs: step.refs.map((r) => ({
         step_type: r.step_type,
         event_ns: r.step_type === "mm_event" ? r.event_ns : null,
         redirect_event_id:
           r.step_type === "url_click" ? r.redirect_event_id : null,
-      }));
-      const { error: refsErr } = await sb
-        .from("dashboard_step_refs")
-        .insert(refRows);
-      if (refsErr)
-        return NextResponse.json({ error: refsErr.message }, { status: 500 });
-    }
+      })),
+    }));
+    const { error: rpcErr } = await sb.rpc("replace_dashboard_steps", {
+      p_dashboard_id: id,
+      p_steps: stepsPayload,
+    });
+    if (rpcErr)
+      return NextResponse.json({ error: rpcErr.message }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });
