@@ -66,6 +66,9 @@ interface PendingRef {
   step_type: "mm_event" | "url_click";
   event_ns?: string;
   redirect_event_id?: string;
+  /** Mode EDH uniquement : école d'origine du mm_event (event_ns non
+   *  globalement unique). Ignoré pour url_click. */
+  event_school_slug?: string;
 }
 
 interface PendingStep {
@@ -82,8 +85,17 @@ function stepsToPending(steps: DashboardStep[]): PendingStep[] {
     label: s.label && s.label.trim() ? s.label : null,
     refs: s.refs.map((r) =>
       r.step_type === "mm_event"
-        ? { step_type: "mm_event", event_ns: r.event_ns! }
-        : { step_type: "url_click", redirect_event_id: r.redirect_event_id! }
+        ? {
+            step_type: "mm_event" as const,
+            event_ns: r.event_ns!,
+            ...(r.event_school_slug
+              ? { event_school_slug: r.event_school_slug }
+              : {}),
+          }
+        : {
+            step_type: "url_click" as const,
+            redirect_event_id: r.redirect_event_id!,
+          }
     ),
   }));
 }
@@ -255,12 +267,28 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
   }
 
   function makeRef(p: PaletteItem, position: number): StepRef {
+    // En mode EDH, ref_id pour un mm_event est composite "<school>:<event_ns>".
+    // On split pour stocker proprement event_ns + event_school_slug.
+    if (p.step_type === "mm_event") {
+      const eventNs = p.school_slug
+        ? p.ref_id.slice(p.school_slug.length + 1)
+        : p.ref_id;
+      return {
+        id: tmpId("ref"),
+        ref_position: position,
+        step_type: "mm_event",
+        event_ns: eventNs,
+        redirect_event_id: null,
+        event_school_slug: p.school_slug ?? null,
+      };
+    }
     return {
       id: tmpId("ref"),
       ref_position: position,
-      step_type: p.step_type,
-      event_ns: p.step_type === "mm_event" ? p.ref_id : null,
-      redirect_event_id: p.step_type === "url_click" ? p.ref_id : null,
+      step_type: "url_click",
+      event_ns: null,
+      redirect_event_id: p.ref_id,
+      event_school_slug: null,
     };
   }
 
@@ -366,18 +394,42 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
     }
   }
 
-  // Resolve label + availability for a single ref using the local palette.
+  // Resolve label + availability + school chip for a single ref using the
+  // local palette. En mode EDH, l'identité d'un mm_event est composite
+  // (school_slug, event_ns) : on doit reconstituer la clé pour matcher.
   const resolveRef = useCallback(
-    (r: StepRef): { label: string; available: boolean } => {
-      if (!palette) return { label: "…", available: true };
-      const refId =
-        r.step_type === "mm_event" ? r.event_ns! : r.redirect_event_id!;
-      const list =
-        r.step_type === "mm_event" ? palette.mmEvents : palette.redirectEvents;
-      const found = list.find((p) => p.ref_id === refId);
+    (
+      r: StepRef
+    ): {
+      label: string;
+      available: boolean;
+      schoolName: string | null;
+    } => {
+      if (!palette)
+        return { label: "…", available: true, schoolName: null };
+      if (r.step_type === "mm_event") {
+        const refId = r.event_school_slug
+          ? `${r.event_school_slug}:${r.event_ns}`
+          : r.event_ns!;
+        const found = palette.mmEvents.find((p) => p.ref_id === refId);
+        return found
+          ? {
+              label: found.label,
+              available: true,
+              schoolName: found.school_name ?? null,
+            }
+          : { label: "(indisponible)", available: false, schoolName: null };
+      }
+      const found = palette.redirectEvents.find(
+        (p) => p.ref_id === r.redirect_event_id
+      );
       return found
-        ? { label: found.label, available: true }
-        : { label: "(indisponible)", available: false };
+        ? {
+            label: found.label,
+            available: true,
+            schoolName: found.school_name ?? null,
+          }
+        : { label: "(indisponible)", available: false, schoolName: null };
     },
     [palette]
   );
@@ -684,6 +736,11 @@ function PaletteRow({ item }: { item: PaletteItem }) {
       {...attributes}
       {...listeners}
     >
+      {item.school_name && (
+        <span className="text-[10px] font-mono px-1 py-0 rounded bg-amber-100 text-amber-800 shrink-0">
+          {item.school_name}
+        </span>
+      )}
       <span className="truncate flex-1">{item.label}</span>
     </li>
   );
@@ -714,7 +771,11 @@ interface SortableStepGroupProps {
   step: DashboardStep;
   index: number;
   placeholder: string;
-  resolveRef: (r: StepRef) => { label: string; available: boolean };
+  resolveRef: (r: StepRef) => {
+    label: string;
+    available: boolean;
+    schoolName: string | null;
+  };
   palette: Palette;
   onLabelChange: (v: string) => void;
   onAddRef: (p: PaletteItem) => void;
@@ -797,8 +858,13 @@ function SortableStepGroup({
               className={`inline-flex items-center gap-1 bg-white border rounded px-2 py-0.5 text-xs ${
                 meta.available ? "" : "opacity-60"
               }`}
-              title={meta.available ? undefined : "Cette source n'existe plus pour cette école"}
+              title={meta.available ? undefined : "Cette source n'existe plus"}
             >
+              {meta.schoolName && (
+                <span className="text-[10px] font-mono px-1 py-0 rounded bg-amber-100 text-amber-800">
+                  {meta.schoolName}
+                </span>
+              )}
               <span className="truncate max-w-[160px]">{meta.label}</span>
               {!meta.available && (
                 <span className="text-amber-700 bg-amber-100 px-1 rounded">!</span>
@@ -844,9 +910,14 @@ function AddRefMenu({
               <DropdownMenuItem
                 key={p.ref_id}
                 onClick={() => onAdd(p)}
-                className="text-sm"
+                className="text-sm flex items-center gap-2"
               >
-                {p.label}
+                {p.school_name && (
+                  <span className="text-[10px] font-mono px-1 py-0 rounded bg-amber-100 text-amber-800 shrink-0">
+                    {p.school_name}
+                  </span>
+                )}
+                <span className="truncate">{p.label}</span>
               </DropdownMenuItem>
             ))}
           </>
@@ -863,9 +934,14 @@ function AddRefMenu({
               <DropdownMenuItem
                 key={p.ref_id}
                 onClick={() => onAdd(p)}
-                className="text-sm"
+                className="text-sm flex items-center gap-2"
               >
-                {p.label}
+                {p.school_name && (
+                  <span className="text-[10px] font-mono px-1 py-0 rounded bg-amber-100 text-amber-800 shrink-0">
+                    {p.school_name}
+                  </span>
+                )}
+                <span className="truncate">{p.label}</span>
               </DropdownMenuItem>
             ))}
           </>

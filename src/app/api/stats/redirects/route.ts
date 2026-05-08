@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSupabase } from "@/lib/supabase/service";
 import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
+import { getSchoolBySlug, isEdhScope } from "@/lib/schools";
 import { formatInTimeZone } from "date-fns-tz";
 
 export const runtime = "nodejs";
@@ -16,9 +17,8 @@ const Q = z.object({
 /**
  * GET /api/stats/redirects?from=YYYY-MM-DD&to=YYYY-MM-DD
  *
- * Liste les URLs trackées (non archivées) de l'école courante, avec le
- * nombre de clics sur la période. Analogue à /api/stats/custom-events
- * pour les events MessagingMe.
+ * Liste les URLs trackées (non archivées) avec leur nombre de clics sur
+ * la période. Per-école ou toutes-écoles selon le scope courant.
  */
 export async function GET(req: Request) {
   try {
@@ -37,13 +37,16 @@ export async function GET(req: Request) {
 
   const schoolSlug = await getCurrentSchoolSlugChecked();
   const sb = getSupabase();
+  const isEdh = isEdhScope(schoolSlug);
 
-  const { data: events, error } = await sb
+  let q = sb
     .from("redirect_events")
-    .select("id, slug, name")
-    .eq("school_slug", schoolSlug)
+    .select("id, slug, name, school_slug")
     .is("archived_at", null)
+    .order("school_slug")
     .order("name");
+  if (!isEdh) q = q.eq("school_slug", schoolSlug);
+  const { data: events, error } = await q;
   if (error)
     return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -69,7 +72,15 @@ export async function GET(req: Request) {
         .eq("event_id", ev.id)
         .gte("clicked_at", fromUtc)
         .lte("clicked_at", toUtc);
-      return { ...ev, count: count ?? 0 };
+      const school = getSchoolBySlug(ev.school_slug);
+      return {
+        id: ev.id,
+        slug: ev.slug,
+        name: ev.name,
+        school_slug: ev.school_slug,
+        school_name: school?.name ?? ev.school_slug,
+        count: count ?? 0,
+      };
     })
   );
 

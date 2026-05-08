@@ -42,8 +42,13 @@ interface MockOpts {
     step_type: "mm_event" | "url_click";
     event_ns: string | null;
     redirect_event_id: string | null;
+    /** En mode école-précise, NULL : la route se rabat sur le school du
+     *  dashboard. En mode EDH groupe, l'école d'origine du mm_event. */
+    event_school_slug?: string | null;
   }>;
-  mmLabels?: Array<{ event_ns: string; name: string }>;
+  /** Le route data filtre par school_slug, donc le mock doit injecter le
+   *  school_slug. Par défaut on l'aligne sur ownerData.school_slug. */
+  mmLabels?: Array<{ event_ns: string; name: string; school_slug?: string }>;
   redirectLabels?: Array<{ id: string; name: string; school_slug: string }>;
   /** Counts returned by mm_occurrences in order of appearance. */
   mmCounts?: number[];
@@ -87,12 +92,19 @@ function buildSupabaseMock(opts: MockOpts) {
         };
       }
       if (table === "mm_events") {
+        // Nouveau shape : .select().in("school_slug", involvedSchools).
+        // Chaque mmLabel doit porter school_slug pour que la route le
+        // matche (clé composite (school_slug, event_ns)). On assume
+        // ownerData.school_slug par défaut.
+        const ownerSchool = opts.ownerData?.school_slug ?? "efap";
+        const labels = (opts.mmLabels ?? []).map((l) => ({
+          school_slug: l.school_slug ?? ownerSchool,
+          event_ns: l.event_ns,
+          name: l.name,
+        }));
         return {
           select: () => ({
-            eq: () => ({
-              in: () =>
-                Promise.resolve({ data: opts.mmLabels ?? [], error: null }),
-            }),
+            in: () => Promise.resolve({ data: labels, error: null }),
           }),
         };
       }

@@ -17,6 +17,20 @@ export const EDH_GROUP_LOGO = "/logos/edh.png";
 /** Logo MessagingMe (rendu dans le footer du shell auth-gated). */
 export const MESSAGINGME_LOGO = "/logos/messagingme.png";
 
+/**
+ * Slug-sentinelle utilisé pour le scope "EDH groupe" (toutes écoles
+ * confondues). Stocké :
+ *   - en row dans `user_school_access` pour matérialiser l'accès
+ *   - en valeur de `dashboards.school_slug` pour les funnels EDH
+ *   - en valeur du cookie `edh_school` quand l'utilisateur sélectionne
+ *     l'entrée EDH dans la sidebar
+ *
+ * Distingué de `isValidSchoolSlug` (qui ne reconnaît que les 9 écoles)
+ * par `isValidScopeSlug` (qui inclut aussi 'edh').
+ */
+export const EDH_SCOPE_SLUG = "edh";
+export const EDH_SCOPE_NAME = "EDH groupe";
+
 export const SCHOOLS: readonly School[] = [
   { slug: "efap",         name: "EFAP",         tokenEnv: "MM_TOKEN_EFAP",         vectorStoreEnv: "OPENAI_VS_EFAP",         logo: "/logos/efap.png" },
   { slug: "3wa",          name: "3WA",          tokenEnv: "MM_TOKEN_3WA",          vectorStoreEnv: "OPENAI_VS_3WA",          logo: "/logos/3wa.png" },
@@ -33,6 +47,18 @@ const SLUG_SET = new Set(SCHOOLS.map((s) => s.slug));
 
 export function isValidSchoolSlug(slug: string): boolean {
   return SLUG_SET.has(slug);
+}
+
+/**
+ * Valide les valeurs acceptables pour le cookie `edh_school` ou pour
+ * `dashboards.school_slug` : les 9 écoles + le scope EDH.
+ */
+export function isValidScopeSlug(slug: string): boolean {
+  return SLUG_SET.has(slug) || slug === EDH_SCOPE_SLUG;
+}
+
+export function isEdhScope(slug: string): boolean {
+  return slug === EDH_SCOPE_SLUG;
 }
 
 export function getSchoolBySlug(slug: string): School | undefined {

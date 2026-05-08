@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Copy, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { SCHOOLS } from "@/lib/schools";
+import { SCHOOLS, EDH_SCOPE_SLUG, EDH_SCOPE_NAME } from "@/lib/schools";
 import type { AdminUser } from "@/lib/admin/types";
 
 const PASSWORD_ALPHABET =
@@ -217,7 +217,7 @@ export function UserDialog({ mode, user, onClose, onSaved }: Props) {
 
           <div className="space-y-1">
             <Label>Écoles accessibles</Label>
-            <div className="grid grid-cols-2 gap-1.5 border rounded p-2 max-h-48 overflow-auto">
+            <div className="grid grid-cols-2 gap-1.5 border rounded p-2 max-h-56 overflow-auto">
               {SCHOOLS.map((s) => (
                 <label key={s.slug} className="flex items-center gap-2 text-sm">
                   <input
@@ -228,6 +228,20 @@ export function UserDialog({ mode, user, onClose, onSaved }: Props) {
                   <span>{s.name}</span>
                 </label>
               ))}
+              <label
+                className="flex items-center gap-2 text-sm col-span-2 border-t pt-1.5 mt-1"
+                title="Donne accès à la vue agrégée toutes écoles (Stats EDH groupe + Mes tableaux EDH)"
+              >
+                <input
+                  type="checkbox"
+                  checked={schools.has(EDH_SCOPE_SLUG)}
+                  onChange={() => toggleSchool(EDH_SCOPE_SLUG)}
+                />
+                <span className="font-medium">{EDH_SCOPE_NAME}</span>
+                <span className="text-xs text-zinc-500">
+                  (vue agrégée toutes écoles)
+                </span>
+              </label>
             </div>
           </div>
         </div>

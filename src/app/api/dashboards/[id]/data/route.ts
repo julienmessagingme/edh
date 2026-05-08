@@ -3,6 +3,7 @@ import { getSupabase } from "@/lib/supabase/service";
 import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 import { resolveDateRange } from "@/lib/dashboards/date-range";
+import { getSchoolBySlug, isEdhScope } from "@/lib/schools";
 import type {
   ComputedRef,
   ComputedStep,
@@ -35,6 +36,7 @@ interface RefRow {
   step_type: StepType;
   event_ns: string | null;
   redirect_event_id: string | null;
+  event_school_slug: string | null;
 }
 
 function nextDay(isoDate: string): string {
@@ -55,7 +57,8 @@ export async function GET(
   }
   const { id } = await ctx.params;
   const sb = getSupabase();
-  const schoolSlug = await getCurrentSchoolSlugChecked();
+  const scope = await getCurrentSchoolSlugChecked();
+  const isEdh = isEdhScope(scope);
 
   const { data: dash } = await sb
     .from("dashboards")
@@ -66,10 +69,13 @@ export async function GET(
   if (
     !dash ||
     dash.created_by !== user.userId ||
-    dash.school_slug !== schoolSlug
+    dash.school_slug !== scope
   ) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
+  // Capture non-null pour que TS ne perde pas le narrowing à l'intérieur
+  // de la closure `computeRef`.
+  const dashSchool = dash.school_slug;
 
   const { data: stepsData, error: stepsErr } = await sb
     .from("dashboard_steps")
@@ -97,7 +103,9 @@ export async function GET(
   const stepIds = stepRows.map((s) => s.id);
   const { data: refsData, error: refsErr } = await sb
     .from("dashboard_step_refs")
-    .select("id, step_id, ref_position, step_type, event_ns, redirect_event_id")
+    .select(
+      "id, step_id, ref_position, step_type, event_ns, redirect_event_id, event_school_slug"
+    )
     .in("step_id", stepIds)
     .order("ref_position", { ascending: true });
   if (refsErr)
@@ -105,23 +113,39 @@ export async function GET(
 
   const refRows = (refsData ?? []) as RefRow[];
 
-  // Pre-fetch labels
-  const eventNsList = Array.from(
-    new Set(refRows.filter((r) => r.step_type === "mm_event").map((r) => r.event_ns!))
-  );
+  // Pour chaque mm_event ref, l'école est event_school_slug en mode EDH,
+  // sinon le school_slug du dashboard. Pour les url_click on stocke par
+  // redirect_event_id (uuid global) et on lira l'école côté redirect_events.
+  type MmKey = string; // `${school}|${event_ns}`
+  const mmKeys = new Set<MmKey>();
+  for (const r of refRows) {
+    if (r.step_type === "mm_event" && r.event_ns) {
+      const sch = isEdh ? r.event_school_slug : dashSchool;
+      if (sch) mmKeys.add(`${sch}|${r.event_ns}`);
+    }
+  }
+  const mmKeyList = Array.from(mmKeys);
   const redirectIdList = Array.from(
     new Set(
-      refRows.filter((r) => r.step_type === "url_click").map((r) => r.redirect_event_id!)
+      refRows
+        .filter((r) => r.step_type === "url_click")
+        .map((r) => r.redirect_event_id!)
     )
   );
 
+  // Préchargement des labels :
+  //  - mm_events filtré par couples (school_slug, event_ns) : Supabase
+  //    n'a pas de WHERE composé (a,b) IN ((..,..)) donc on charge en
+  //    bloc par les écoles concernées et on filtre côté JS.
+  const involvedSchools = Array.from(
+    new Set(mmKeyList.map((k) => k.split("|")[0]!))
+  );
   const [mmLabelsRes, redirectLabelsRes] = await Promise.all([
-    eventNsList.length > 0
+    involvedSchools.length > 0
       ? sb
           .from("mm_events")
-          .select("event_ns, name")
-          .eq("school_slug", schoolSlug)
-          .in("event_ns", eventNsList)
+          .select("school_slug, event_ns, name")
+          .in("school_slug", involvedSchools)
       : Promise.resolve({ data: [], error: null }),
     redirectIdList.length > 0
       ? sb
@@ -131,22 +155,31 @@ export async function GET(
       : Promise.resolve({ data: [], error: null }),
   ]);
 
-  const mmLabels = new Map<string, string>();
-  for (const r of (mmLabelsRes.data as { event_ns: string; name: string }[]) ?? []) {
-    mmLabels.set(r.event_ns, r.name);
+  const mmLabels = new Map<MmKey, string>();
+  for (const r of (mmLabelsRes.data as {
+    school_slug: string;
+    event_ns: string;
+    name: string;
+  }[]) ?? []) {
+    mmLabels.set(`${r.school_slug}|${r.event_ns}`, r.name);
   }
-  const redirectLabels = new Map<string, string>();
+  const redirectLabels = new Map<
+    string,
+    { name: string; school_slug: string }
+  >();
   for (const r of (redirectLabelsRes.data as {
     id: string;
     name: string;
     school_slug: string;
   }[]) ?? []) {
-    if (r.school_slug === schoolSlug) {
-      redirectLabels.set(r.id, r.name);
+    // En mode école-précise, on n'expose que les redirects de l'école
+    // courante (les autres écoles peuvent partager le même uuid en
+    // théorie, mais c'est un uuid donc unique : juste un garde-fou).
+    if (isEdh || r.school_slug === dashSchool) {
+      redirectLabels.set(r.id, { name: r.name, school_slug: r.school_slug });
     }
   }
 
-  // Compute counts for each ref in parallel
   const refsByStep = new Map<string, RefRow[]>();
   for (const r of refRows) {
     const arr = refsByStep.get(r.step_id) ?? [];
@@ -154,37 +187,58 @@ export async function GET(
     refsByStep.set(r.step_id, arr);
   }
 
+  function chipLabel(name: string, schoolSlug: string | null): string {
+    if (!isEdh || !schoolSlug) return name;
+    const sch = getSchoolBySlug(schoolSlug);
+    return `${sch?.name ?? schoolSlug} · ${name}`;
+  }
+
   async function computeRef(r: RefRow): Promise<ComputedRef> {
     if (r.step_type === "mm_event") {
       const evNs = r.event_ns!;
-      const available = mmLabels.has(evNs);
-      if (!available) {
+      const refSchool = isEdh ? r.event_school_slug : dashSchool;
+      const key = refSchool ? `${refSchool}|${evNs}` : null;
+      const available = !!(key && mmLabels.has(key));
+      if (!available || !refSchool) {
         return {
           step_type: "mm_event",
           ref_id: evNs,
           label: "(indisponible)",
           count: 0,
           available: false,
+          ...(isEdh && refSchool
+            ? {
+                school_slug: refSchool,
+                school_name: getSchoolBySlug(refSchool)?.name ?? refSchool,
+              }
+            : {}),
         };
       }
       const { count } = await sb
         .from("mm_occurrences")
         .select("*", { count: "exact", head: true })
-        .eq("school_slug", schoolSlug)
+        .eq("school_slug", refSchool)
         .eq("event_ns", evNs)
         .gte("occurred_at", fromTs)
         .lt("occurred_at", toTs);
+      const baseLabel = mmLabels.get(key!)!;
       return {
         step_type: "mm_event",
         ref_id: evNs,
-        label: mmLabels.get(evNs)!,
+        label: chipLabel(baseLabel, refSchool),
         count: count ?? 0,
         available: true,
+        ...(isEdh
+          ? {
+              school_slug: refSchool,
+              school_name: getSchoolBySlug(refSchool)?.name ?? refSchool,
+            }
+          : {}),
       };
     }
     const reId = r.redirect_event_id!;
-    const available = redirectLabels.has(reId);
-    if (!available) {
+    const meta = redirectLabels.get(reId);
+    if (!meta) {
       return {
         step_type: "url_click",
         ref_id: reId,
@@ -202,9 +256,16 @@ export async function GET(
     return {
       step_type: "url_click",
       ref_id: reId,
-      label: redirectLabels.get(reId)!,
+      label: chipLabel(meta.name, meta.school_slug),
       count: count ?? 0,
       available: true,
+      ...(isEdh
+        ? {
+            school_slug: meta.school_slug,
+            school_name:
+              getSchoolBySlug(meta.school_slug)?.name ?? meta.school_slug,
+          }
+        : {}),
     };
   }
 

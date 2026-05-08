@@ -9,8 +9,11 @@ import { toast, Toaster } from "sonner";
 import { EventAccordion } from "./event-accordion";
 import { RedirectAccordion } from "./redirect-accordion";
 import { SubNavStats } from "../sub-nav-stats";
+import { useScope } from "../scope-context";
 
 interface MmEventListItem {
+  school_slug: string;
+  school_name: string;
   event_ns: string;
   name: string;
   description: string | null;
@@ -21,10 +24,13 @@ interface RedirectListItem {
   id: string;
   slug: string;
   name: string;
+  school_slug: string;
+  school_name: string;
   count: number;
 }
 
 interface SyncState {
+  school_slug?: string;
   event_ns: string;
   last_run_at: string | null;
   last_run_status: string | null;
@@ -46,6 +52,7 @@ export function StatsClient() {
   const [syncs, setSyncs] = useState<SyncState[]>([]);
   const [loading, setLoading] = useState(false);
   const [resyncing, setResyncing] = useState(false);
+  const { isEdh } = useScope();
 
   async function load() {
     setLoading(true);
@@ -134,31 +141,43 @@ export function StatsClient() {
       </div>
 
       <section className="space-y-2">
-        <h2 className="text-xl font-semibold">Custom events MessagingMe</h2>
+        <h2 className="text-xl font-semibold">
+          Custom events MessagingMe{isEdh ? " — toutes écoles" : ""}
+        </h2>
         {loading ? (
           <p className="text-zinc-500">Chargement…</p>
         ) : events.length === 0 ? (
           <p className="text-zinc-500">
-            Aucun custom event pour cette école. Lancez un sync via le bouton ⟳
-            en bas de page.
+            {isEdh
+              ? "Aucun custom event remonté pour les écoles du groupe."
+              : "Aucun custom event pour cette école. Lancez un sync via le bouton ⟳ en bas de page."}
           </p>
         ) : (
           <Accordion multiple className="space-y-2">
             {events.map((ev) => (
-              <EventAccordion key={ev.event_ns} ev={ev} from={from} to={to} />
+              <EventAccordion
+                key={`${ev.school_slug}:${ev.event_ns}`}
+                ev={ev}
+                from={from}
+                to={to}
+                showSchoolChip={isEdh}
+              />
             ))}
           </Accordion>
         )}
       </section>
 
       <section className="space-y-2 pt-4">
-        <h2 className="text-xl font-semibold">Clics URL trackées</h2>
+        <h2 className="text-xl font-semibold">
+          Clics URL trackées{isEdh ? " — toutes écoles" : ""}
+        </h2>
         {loading ? (
           <p className="text-zinc-500">Chargement…</p>
         ) : redirects.length === 0 ? (
           <p className="text-zinc-500">
-            Aucune URL trackée pour cette école. Créez-en une dans l&apos;onglet
-            URLs.
+            {isEdh
+              ? "Aucune URL trackée dans le groupe."
+              : "Aucune URL trackée pour cette école. Créez-en une dans l'onglet URLs."}
           </p>
         ) : (
           <Accordion multiple className="space-y-2">
@@ -168,6 +187,7 @@ export function StatsClient() {
                 redirect={r}
                 from={from}
                 to={to}
+                showSchoolChip={isEdh}
               />
             ))}
           </Accordion>

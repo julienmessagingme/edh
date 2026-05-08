@@ -8,6 +8,10 @@ export interface StepRef {
   step_type: StepType;
   event_ns: string | null;
   redirect_event_id: string | null;
+  /** Renseigné uniquement en mode EDH groupe pour les refs mm_event :
+   *  l'event_ns n'étant pas globalement unique entre écoles, on doit
+   *  porter l'origine. NULL en mode école-précise (legacy). */
+  event_school_slug: string | null;
 }
 
 export interface DashboardStep {
@@ -41,6 +45,9 @@ export interface ComputedRef {
   label: string;
   count: number;
   available: boolean;
+  /** Renseigné en mode EDH pour préfixer le label avec l'école (chip). */
+  school_slug?: string;
+  school_name?: string;
 }
 
 export interface ComputedStep {
@@ -64,6 +71,10 @@ export interface PaletteItem {
   step_type: StepType;
   ref_id: string;
   label: string;
+  /** En mode EDH groupe, l'école d'origine est portée par chaque item ;
+   *  en mode école-précise, ces champs sont absents. */
+  school_slug?: string;
+  school_name?: string;
 }
 
 export interface Palette {

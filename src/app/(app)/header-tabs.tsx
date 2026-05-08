@@ -10,28 +10,37 @@ interface Tab {
 }
 
 /**
- * Top-level navigation : "Stats" (which encompasses /urls, /stats and
- * /dashboards), "Base de connaissance" (/knowledge), and "Admin" (only
- * visible when `isAdmin` is true). Lives at the top of the auth-gated
- * shell, just above the school sidebar + main content.
+ * Top-level navigation : "Stats" (qui regroupe /urls, /stats et /dashboards),
+ * "Base de connaissance" (/knowledge), et "Admin" (visible uniquement si
+ * `isAdmin`). En mode EDH groupe (`isEdhScope`), l'onglet "Base de
+ * connaissance" est masqué — il n'y a pas de KB groupe, chaque école a son
+ * propre vector store.
  */
-export function HeaderTabs({ isAdmin }: { isAdmin: boolean }) {
+export function HeaderTabs({
+  isAdmin,
+  isEdhScope,
+}: {
+  isAdmin: boolean;
+  isEdhScope: boolean;
+}) {
   const pathname = usePathname();
   const tabs: Tab[] = [
     {
-      href: "/urls",
+      href: isEdhScope ? "/dashboards" : "/urls",
       label: "Stats",
       // Stats encompasses URLs / Stats / Mes tableaux
       match: (p) =>
         !p.startsWith("/knowledge") &&
         !p.startsWith("/admin"),
     },
-    {
+  ];
+  if (!isEdhScope) {
+    tabs.push({
       href: "/knowledge",
       label: "Base de connaissance",
       match: (p) => p.startsWith("/knowledge"),
-    },
-  ];
+    });
+  }
   if (isAdmin) {
     tabs.push({
       href: "/admin",

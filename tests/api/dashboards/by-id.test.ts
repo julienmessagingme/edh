@@ -334,15 +334,12 @@ describe("PATCH /api/dashboards/[id]", () => {
     expect(arg.name).toBe("Renommed");
   });
 
-  it("replaces steps atomically (cumul: 1 step with 3 refs, mixed types)", async () => {
-    const stepDelete = vi.fn().mockReturnValue({
-      eq: () => Promise.resolve({ error: null }),
-    });
-    const stepInsertSelect = vi.fn().mockReturnValue({
-      single: () => Promise.resolve({ data: { id: "new-step-1" }, error: null }),
-    });
-    const stepInsert = vi.fn().mockReturnValue({ select: stepInsertSelect });
-    const refsInsert = vi.fn().mockResolvedValue({ error: null });
+  it("replaces steps atomically via RPC (cumul: 1 step with 3 refs, mixed types)", async () => {
+    // Depuis migration 007, le PATCH passe par la RPC PL/pgSQL
+    // `replace_dashboard_steps` (atomique côté Postgres) plutôt que par
+    // une séquence DELETE + N inserts côté JS. Le mock vérifie juste
+    // que la RPC est appelée avec le bon payload.
+    const rpc = vi.fn().mockResolvedValue({ error: null });
 
     const { getSupabase } = await import("@/lib/supabase/service");
     (getSupabase as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue({
@@ -363,14 +360,9 @@ describe("PATCH /api/dashboards/[id]", () => {
             }),
           };
         }
-        if (table === "dashboard_steps") {
-          return { delete: stepDelete, insert: stepInsert };
-        }
-        if (table === "dashboard_step_refs") {
-          return { insert: refsInsert };
-        }
         throw new Error(`Unexpected table: ${table}`);
       },
+      rpc,
     });
 
     const { PATCH } = await import("@/app/api/dashboards/[id]/route");
@@ -397,31 +389,30 @@ describe("PATCH /api/dashboards/[id]", () => {
       { params: Promise.resolve({ id: "d1" }) }
     );
     expect(res.status).toBe(200);
-    expect(stepDelete).toHaveBeenCalled();
-    expect(stepInsert).toHaveBeenCalledTimes(1);
-    expect(stepInsert.mock.calls[0][0]).toMatchObject({
-      dashboard_id: "d1",
-      position: 0,
-      label: "Relances cumul",
-    });
-    expect(refsInsert).toHaveBeenCalledTimes(1);
-    const refs = refsInsert.mock.calls[0][0] as Array<{
-      step_id: string;
-      ref_position: number;
-      step_type: string;
-      event_ns: string | null;
-      redirect_event_id: string | null;
-    }>;
-    expect(refs).toHaveLength(3);
-    expect(refs[0]).toMatchObject({
-      step_id: "new-step-1",
-      ref_position: 0,
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc.mock.calls[0][0]).toBe("replace_dashboard_steps");
+    const payload = rpc.mock.calls[0][1] as {
+      p_dashboard_id: string;
+      p_steps: Array<{
+        label: string | null;
+        refs: Array<{
+          step_type: string;
+          event_ns: string | null;
+          redirect_event_id: string | null;
+          event_school_slug: string | null;
+        }>;
+      }>;
+    };
+    expect(payload.p_dashboard_id).toBe("d1");
+    expect(payload.p_steps).toHaveLength(1);
+    expect(payload.p_steps[0].label).toBe("Relances cumul");
+    expect(payload.p_steps[0].refs).toHaveLength(3);
+    expect(payload.p_steps[0].refs[0]).toMatchObject({
       step_type: "mm_event",
       event_ns: "evt_a",
       redirect_event_id: null,
     });
-    expect(refs[2]).toMatchObject({
-      ref_position: 2,
+    expect(payload.p_steps[0].refs[2]).toMatchObject({
       step_type: "url_click",
       event_ns: null,
     });
