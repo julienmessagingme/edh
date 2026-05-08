@@ -3,6 +3,7 @@ import { getSupabase } from "@/lib/supabase/service";
 import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 import { getClicksDaily } from "@/lib/stats/daily";
+import { isEdhScope } from "@/lib/schools";
 
 export const runtime = "nodejs";
 
@@ -27,15 +28,20 @@ export async function GET(
   ) {
     return NextResponse.json({ error: "missing or bad from/to" }, { status: 400 });
   }
-  const schoolSlug = await getCurrentSchoolSlugChecked();
+  const scope = await getCurrentSchoolSlugChecked();
 
-  // Verify the redirect_event belongs to the current school.
+  // En mode école-précise, l'event doit appartenir à cette école. En mode
+  // EDH groupe, l'utilisateur a accès à toutes les écoles, donc l'event
+  // doit juste exister.
   const { data: ev } = await getSupabase()
     .from("redirect_events")
     .select("school_slug")
     .eq("id", event_id)
     .maybeSingle();
-  if (!ev || ev.school_slug !== schoolSlug) {
+  if (!ev) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+  if (!isEdhScope(scope) && ev.school_slug !== scope) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 

@@ -3,7 +3,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { getSupabase } from "@/lib/supabase/service";
 import { requireAdmin } from "@/lib/auth/require-user";
-import { isValidSchoolSlug } from "@/lib/schools";
+import { isValidScopeSlug } from "@/lib/schools";
 import type { AdminUser } from "@/lib/admin/types";
 
 export const runtime = "nodejs";
@@ -73,7 +73,8 @@ export async function POST(req: Request) {
     );
   }
   const { email, name, password, is_admin, schools } = parsed.data;
-  const validSchools = schools.filter(isValidSchoolSlug);
+  // isValidScopeSlug autorise les 9 écoles + le scope sentinelle 'edh'.
+  const validSchools = schools.filter(isValidScopeSlug);
 
   const sb = getSupabase();
   const passwordHash = await bcrypt.hash(password, 10);

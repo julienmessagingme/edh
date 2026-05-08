@@ -15,6 +15,9 @@ const RefSchema = z.discriminatedUnion("step_type", [
   z.object({
     step_type: z.literal("mm_event"),
     event_ns: z.string().min(1),
+    /** Renseigné par le builder en mode EDH (event_ns non globalement
+     *  unique). Ignoré en mode école-précise. */
+    event_school_slug: z.string().min(1).optional().nullable(),
   }),
   z.object({
     step_type: z.literal("url_click"),
@@ -106,7 +109,9 @@ export async function GET(
   if (stepIds.length > 0) {
     const { data: refsData, error: refsErr } = await sb
       .from("dashboard_step_refs")
-      .select("id, step_id, ref_position, step_type, event_ns, redirect_event_id")
+      .select(
+        "id, step_id, ref_position, step_type, event_ns, redirect_event_id, event_school_slug"
+      )
       .in("step_id", stepIds)
       .order("ref_position", { ascending: true });
     if (refsErr)
@@ -123,6 +128,7 @@ export async function GET(
       step_type: r.step_type,
       event_ns: r.event_ns,
       redirect_event_id: r.redirect_event_id,
+      event_school_slug: r.event_school_slug ?? null,
     });
     refsByStep.set(r.step_id, arr);
   }
@@ -189,6 +195,11 @@ export async function PATCH(
         event_ns: r.step_type === "mm_event" ? r.event_ns : null,
         redirect_event_id:
           r.step_type === "url_click" ? r.redirect_event_id : null,
+        // Persisté uniquement pour les mm_event (la contrainte CHECK en
+        // DB rejette une valeur non-NULL pour les url_click). En mode
+        // école-précise le builder n'envoie pas ce champ → null.
+        event_school_slug:
+          r.step_type === "mm_event" ? r.event_school_slug ?? null : null,
       })),
     }));
     const { error: rpcErr } = await sb.rpc("replace_dashboard_steps", {

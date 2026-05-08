@@ -34,30 +34,50 @@ describe("GET /api/dashboards/palette", () => {
     (getSupabase as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue({
       from: (table: string) => {
         if (table === "mm_events") {
+          // .select().order("school_slug").order("name").eq("school_slug", X)
           return {
             select: () => ({
-              eq: () => ({
-                order: () =>
-                  Promise.resolve({
-                    data: [
-                      { event_ns: "evt_a", name: "Relance benin" },
-                      { event_ns: "evt_b", name: "Remplissage dossier" },
-                    ],
-                    error: null,
-                  }),
+              order: () => ({
+                order: () => ({
+                  eq: () =>
+                    Promise.resolve({
+                      data: [
+                        {
+                          school_slug: "efap",
+                          event_ns: "evt_a",
+                          name: "Relance benin",
+                        },
+                        {
+                          school_slug: "efap",
+                          event_ns: "evt_b",
+                          name: "Remplissage dossier",
+                        },
+                      ],
+                      error: null,
+                    }),
+                }),
               }),
             }),
           };
         }
+        // redirect_events : .select().is().order().order().eq()
         return {
           select: () => ({
-            eq: () => ({
-              is: () => ({
-                order: () =>
-                  Promise.resolve({
-                    data: [{ id: "uuid-1", name: "Clic JPO" }],
-                    error: null,
-                  }),
+            is: () => ({
+              order: () => ({
+                order: () => ({
+                  eq: () =>
+                    Promise.resolve({
+                      data: [
+                        {
+                          id: "uuid-1",
+                          name: "Clic JPO",
+                          school_slug: "efap",
+                        },
+                      ],
+                      error: null,
+                    }),
+                }),
               }),
             }),
           }),
@@ -69,10 +89,22 @@ describe("GET /api/dashboards/palette", () => {
     const res = await GET();
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      mmEvents: Array<{ step_type: string; ref_id: string; label: string }>;
-      redirectEvents: Array<{ step_type: string; ref_id: string; label: string }>;
+      mmEvents: Array<{
+        step_type: string;
+        ref_id: string;
+        label: string;
+        school_slug?: string;
+      }>;
+      redirectEvents: Array<{
+        step_type: string;
+        ref_id: string;
+        label: string;
+        school_slug?: string;
+      }>;
     };
     expect(body.mmEvents).toHaveLength(2);
+    // En mode école-précise, ref_id = event_ns brut, et school_slug est
+    // omis sur l'item palette (il est implicite via le scope).
     expect(body.mmEvents[0]).toEqual({
       step_type: "mm_event",
       ref_id: "evt_a",

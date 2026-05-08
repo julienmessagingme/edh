@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSupabase } from "@/lib/supabase/service";
 import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
+import { getSchoolBySlug, isEdhScope } from "@/lib/schools";
 import { formatInTimeZone } from "date-fns-tz";
 
 export const runtime = "nodejs";
@@ -30,19 +31,21 @@ export async function GET(req: Request) {
 
   const schoolSlug = await getCurrentSchoolSlugChecked();
   const sb = getSupabase();
+  const isEdh = isEdhScope(schoolSlug);
 
-  const { data: events, error } = await sb
+  // En mode EDH, on remonte les events de toutes les écoles confondues.
+  // Sinon on filtre sur l'école courante uniquement.
+  let q = sb
     .from("mm_events")
-    .select("event_ns, name, description")
-    .eq("school_slug", schoolSlug)
+    .select("school_slug, event_ns, name, description")
+    .order("school_slug")
     .order("name");
+  if (!isEdh) q = q.eq("school_slug", schoolSlug);
+  const { data: events, error } = await q;
   if (error)
     return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Compute UTC bounds, DST-aware. See lib/stats/daily.ts for the rationale
-  // behind the asymmetric offset sampling (T00:00:00Z for from, T12:00:00Z
-  // for to) — this protects against autumn fall-back days losing the last
-  // two hours of the window.
+  // Bornes UTC DST-aware. Cf. lib/stats/daily.ts pour la logique.
   const fromOffset = formatInTimeZone(
     new Date(`${parsed.data.from}T00:00:00Z`),
     TZ,
@@ -61,18 +64,27 @@ export async function GET(req: Request) {
       const { count } = await sb
         .from("mm_occurrences")
         .select("*", { count: "exact", head: true })
-        .eq("school_slug", schoolSlug)
+        .eq("school_slug", ev.school_slug)
         .eq("event_ns", ev.event_ns)
         .gte("occurred_at", fromUtc)
         .lte("occurred_at", toUtc);
-      return { ...ev, count: count ?? 0 };
+      const school = getSchoolBySlug(ev.school_slug);
+      return {
+        school_slug: ev.school_slug,
+        school_name: school?.name ?? ev.school_slug,
+        event_ns: ev.event_ns,
+        name: ev.name,
+        description: ev.description,
+        count: count ?? 0,
+      };
     })
   );
 
-  const { data: syncs } = await sb
+  let syncQuery = sb
     .from("mm_sync_state")
-    .select("event_ns, last_run_at, last_run_status, last_run_error")
-    .eq("school_slug", schoolSlug);
+    .select("school_slug, event_ns, last_run_at, last_run_status, last_run_error");
+  if (!isEdh) syncQuery = syncQuery.eq("school_slug", schoolSlug);
+  const { data: syncs } = await syncQuery;
 
   return NextResponse.json({ events: counts, syncs: syncs ?? [] });
 }

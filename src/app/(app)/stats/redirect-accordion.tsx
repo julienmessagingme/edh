@@ -24,10 +24,19 @@ export function RedirectAccordion({
   redirect,
   from,
   to,
+  showSchoolChip = false,
 }: {
-  redirect: { id: string; slug: string; name: string; count: number };
+  redirect: {
+    id: string;
+    slug: string;
+    name: string;
+    school_slug: string;
+    school_name: string;
+    count: number;
+  };
   from: string;
   to: string;
+  showSchoolChip?: boolean;
 }) {
   const [series, setSeries] = useState<DailyPoint[] | null>(null);
   const [opened, setOpened] = useState(false);
@@ -64,7 +73,14 @@ export function RedirectAccordion({
       >
         <div className="flex justify-between w-full pr-2 items-baseline gap-3">
           <div className="flex flex-col items-start min-w-0">
-            <span className="font-medium truncate">{redirect.name}</span>
+            <div className="flex items-center gap-2 min-w-0">
+              {showSchoolChip && (
+                <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 shrink-0">
+                  {redirect.school_name}
+                </span>
+              )}
+              <span className="font-medium truncate">{redirect.name}</span>
+            </div>
             <code className="text-xs text-zinc-400">/r/{redirect.slug}</code>
           </div>
           <span className="text-zinc-500 text-sm shrink-0">
