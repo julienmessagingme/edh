@@ -14,12 +14,29 @@
 ## Switch d'école (sidebar)
 
 - Sidebar gauche fixe avec **uniquement les écoles auxquelles l'utilisateur a accès** (cf. Administration). Un user qui n'a accès qu'à EFAP ne verra que EFAP. Catalogue complet des 9 écoles : EFAP, 3WA, Brassart, CESINE, EFJ, ESEC, École Bleue, ICART, IFA.
+- **Entrée « EDH groupe » en tête** (logo EDH + accent ambre) pour les utilisateurs qui ont l'accès EDH (cf. section dédiée). Sépare visuellement la vue agrégée toutes-écoles des écoles individuelles.
 - Logo du groupe EDH en haut à gauche du header. Footer `Propulsé par <logo MessagingMe>` en bas de toutes les pages auth.
-- Cliquer une école change le contexte de toute l'app — URLs, Stats, Mes tableaux et Base de connaissance se filtrent automatiquement.
-- Le choix persiste 1 an dans un cookie. Si la school du cookie n'est plus accessible (admin a retiré l'accès), bascule auto sur la 1<sup>re</sup> école accessible.
+- Cliquer une école change le contexte de toute l'app — URLs, Stats, Mes tableaux et Base de connaissance se filtrent automatiquement. Cliquer « EDH groupe » bascule en mode agrégé (cf. ci-dessous).
+- Le choix persiste 1 an dans un cookie. Si la school du cookie n'est plus accessible (admin a retiré l'accès), bascule auto sur la 1<sup>re</sup> école accessible (ou EDH si c'est le seul accès restant).
 - Bouton « Se déconnecter » en bas de la sidebar.
 
 **Statut :** ✅ livré.
+
+## EDH groupe (vue agrégée toutes écoles)
+
+Mode dédié à ceux qui pilotent toutes les écoles d'un coup (au lancement : Julien ; Laura/Sarah à activer via Admin). Sélectionnable depuis la sidebar quand l'utilisateur a l'accès EDH coché dans son profil admin.
+
+En mode EDH :
+
+- **Stats** affiche un accordéon par **(école, custom event)** et un par **(école, URL trackée)**, avec un chip « EFAP / 3WA / … » en préfixe pour qu'on ne mélange jamais deux events qui s'appelleraient pareil dans deux écoles différentes (par exemple `purchase_completed` qui peut exister chez EFAP et chez ICART pour des choses différentes).
+- **Mes tableaux** propose une palette agrégée toutes écoles confondues (chaque item étiqueté avec son école) et permet de **cumuler dans une même étape des events de plusieurs écoles** — typiquement « Toutes les inscriptions JPO du groupe » qui somme `inscription_jpo` de chacune des 9 écoles.
+- **Onglet « Base de connaissance » masqué** — il n'y a pas de KB groupe (chaque école a son propre vector store OpenAI). Pour alimenter une KB il faut basculer sur l'école concernée.
+- **Sous-onglet « URLs » masqué** — la création d'URL trackée reste per-école (un slug = un template Meta validé pour une école donnée).
+- L'admin reste utilisable normalement pour ceux qui sont admins.
+
+L'accès EDH = lecture sur les **9 écoles**, indépendamment de l'ensemble d'écoles cochées par ailleurs. Concrètement : un user à qui on cocherait juste « EDH groupe » (sans aucune école) verrait quand même l'agrégat des 9 dans la sidebar EDH, sans pouvoir basculer sur une école individuelle.
+
+**Statut :** ✅ livré (2026-05-08, migration 008).
 
 ## Onglets de niveau 1
 
@@ -150,7 +167,7 @@ Onglet niveau 1 `Admin` du header, **visible uniquement par les administrateurs*
 - Bouton désactiver (icône utilisateur barré) ou réactiver (icône utilisateur coché) à côté. Pas de bouton désactiver sur sa propre card.
 - Bouton `+ Inviter` en haut à droite.
 
-**Modal Inviter** : email + nom + mot de passe temporaire (auto-généré, copiable, régénérable à la volée) + grille des 9 écoles (toutes cochées par défaut, on décoche celles auxquelles on ne veut pas donner accès) + checkbox `Administrateur`. À la création, un toast affiche le mot de passe pendant 30 secondes pour qu'on puisse le copier-coller dans Slack/email vers la personne invitée.
+**Modal Inviter** : email + nom + mot de passe temporaire (auto-généré, copiable, régénérable à la volée) + grille des 9 écoles (toutes cochées par défaut, on décoche celles auxquelles on ne veut pas donner accès) + **10e checkbox « EDH groupe »** (séparateur, accent ambre, décochée par défaut) qui donne la vue agrégée toutes écoles + checkbox `Administrateur`. À la création, un toast affiche le mot de passe pendant 30 secondes pour qu'on puisse le copier-coller dans Slack/email vers la personne invitée.
 
 **Modal Modifier** : email read-only (immuable), nom modifiable, champ optionnel "Nouveau mot de passe" (vide = inchangé), grille des écoles, checkbox admin.
 

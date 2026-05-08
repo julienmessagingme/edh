@@ -101,11 +101,37 @@ Pour ajouter une école :
 
 `getCurrentSchoolSlug()` (`src/lib/schools/context.ts`) lit le cookie `edh_school`. Si absent ou invalide, retourne `DEFAULT_SCHOOL_SLUG` (`efap`). Tous les endpoints qui scopent par école (`POST /api/events`, `GET /api/stats/...`) lisent cette valeur côté serveur, jamais côté client.
 
+`getCurrentSchoolSlugChecked()` valide en plus que l'utilisateur a effectivement accès au scope demandé. Fallback intelligent : si le cookie pointe sur une école qu'il n'a plus, rabat sur sa première école accessible ; si le cookie pointe sur `'edh'` mais qu'il n'a plus l'accès EDH, idem ; si zéro accès du tout (école **et** EDH), throw 403.
+
 ### 4.3 Bascule UI
 
-`POST /api/school` (auth-gated) avec `{ slug }` valide → set le cookie. La sidebar (`src/app/(app)/sidebar.tsx`) appelle cet endpoint puis `router.refresh()`. Pendant le fetch, **toute** la sidebar est désactivée pour empêcher les clics rapides successifs (race condition).
+`POST /api/school` (auth-gated) avec `{ slug }` valide → set le cookie. La sidebar (`src/app/(app)/sidebar.tsx`) appelle cet endpoint puis `router.refresh()`. Pendant le fetch, **toute** la sidebar est désactivée pour empêcher les clics rapides successifs (race condition). Le slug accepté inclut les 9 écoles + `'edh'` pour les utilisateurs qui ont l'accès EDH.
 
-### 4.4 Config manquante
+### 4.4 Scope EDH groupe
+
+À côté des 9 écoles, un scope **virtuel** `'edh'` matérialise la vue agrégée toutes-écoles. Trois lieux où la sentinelle apparaît :
+
+1. **`user_school_access`** : une row `(user_id, 'edh')` par utilisateur qui a la permission. Géré via la 10e checkbox du modal admin.
+2. **Cookie `edh_school='edh'`** : matérialise le scope courant côté navigateur (même mécanique que pour une école normale).
+3. **`dashboards.school_slug='edh'`** : matérialise les funnels créés en mode EDH.
+
+`isValidSchoolSlug()` reste **strict** (rejette 'edh') pour les contextes où on ne veut que des écoles vraies (sync messagingme, knowledge, URLs). `isValidScopeSlug()` accepte les deux et est utilisé par `POST /api/school` et `POST/PATCH /api/admin/users`. `isEdhScope()` est l'helper de branchement dans les endpoints stats / dashboards.
+
+`getCurrentUserHasEdhAccess(userId)` (`src/lib/schools/access.ts`) renvoie un boolean — utilisé par le layout pour conditionner l'affichage de l'entrée EDH dans la sidebar et par `getCurrentSchoolSlugChecked` pour la validation. Une row `(user_id, 'edh')` n'apparaît **pas** dans `getCurrentUserSchools()` qui filtre par `isValidSchoolSlug` — c'est volontaire : la liste des écoles pour la sidebar ne doit contenir que les vraies écoles.
+
+Comportement en mode EDH :
+
+- `/api/dashboards/palette` : agrège mm_events + redirect_events des 9 écoles. Chaque item porte `school_slug` + `school_name`. Pour les mm_events, le `ref_id` est composite `<school>:<event_ns>` (event_ns n'étant pas globalement unique).
+- `/api/dashboards/[id]/data` : pour chaque ref mm_event, lit `event_school_slug` (la nouvelle colonne) ; en mode école-précise, fallback sur `dashboard.school_slug`. Cumul cross-école = somme.
+- `/api/stats/custom-events` et `/api/stats/redirects` : ne filtrent plus par `school_slug` quand le scope est `'edh'`. La réponse porte `school_slug` + `school_name` sur chaque item.
+- `/api/stats/custom-events/[event_ns]/daily` : exige un query param `?school=<slug>` en mode EDH (event_ns + school = clé composite).
+- `/api/stats/clicks/[event_id]/daily` : `redirect_event_id` est un uuid global, pas besoin de school param.
+
+Layout : `/urls` et `/knowledge` redirigent vers `/stats` quand le scope courant est EDH (per-école par nature). Les onglets header / sub-nav associés sont aussi masqués via `<HeaderTabs isEdhScope />` et `useScope().isEdh` (ScopeProvider posé par le layout, cf. `src/app/(app)/scope-context.tsx`).
+
+### 4.5 Config manquante
+
+### 4.5 Config manquante
 
 `warnMissingSchoolTokens()` (`src/lib/schools.ts`) loggue un warning JSON au boot pour chaque école sans token MessagingMe (`MM_TOKEN_<SLUG>`) ou sans vector store OpenAI (`OPENAI_VS_<SLUG>`), plus un warning si `OPENAI_API_KEY` est absente. Câblé dans `src/instrumentation.ts` au démarrage du process. Ne bloque pas le boot — chaque école avec config manquante est juste skippée par le sync ou rejette les uploads knowledge avec une erreur claire.
 
@@ -160,8 +186,14 @@ dashboard_steps     (id, dashboard_id FK, position, label nullable,
 dashboard_step_refs (id, step_id FK CASCADE, ref_position,
                      step_type CHECK mm_event|url_click,
                      event_ns nullable, redirect_event_id FK CASCADE nullable,
-                     CHECK exactly one ref, UNIQUE (step_id, ref_position))
+                     event_school_slug nullable text,
+                     CHECK exactly one ref, UNIQUE (step_id, ref_position),
+                     CHECK url_click → event_school_slug IS NULL)
 ```
+
+`dashboards.school_slug` accepte la valeur sentinelle `'edh'` (vue groupe).
+Le scope EDH n'a pas de schéma dédié — il est porté par les conventions
+décrites en section 4.4.
 
 **Index** :
 - `idx_redirect_events_school_archived (school_slug, archived_at)`
@@ -173,7 +205,17 @@ dashboard_step_refs (id, step_id FK CASCADE, ref_position,
 
 **Pas de RLS.** Service-role server-side uniquement. Les filtres `school_slug` sont appliqués côté app.
 
-**Migration manuelle** : ouvrir https://supabase.com/dashboard/project/odmpeakltuzwvtydbpfu/sql/new, coller le contenu de `supabase/migrations/001_init.sql`, Run.
+**Migrations appliquées (par ordre)** :
+1. `001_init.sql` — schéma de base (users, redirects, mm_*)
+2. `002_knowledge.sql` — tables `knowledge_themes`, `knowledge_subthemes`, `knowledge_items`
+3. `003_rename_ejf_to_efj.sql` — renommage école
+4. `004_dashboards.sql` — `dashboards` + `dashboard_steps` (V1, 1 ref par step)
+5. `005_dashboard_step_refs.sql` — sous-table `dashboard_step_refs` (multi-refs / cumul)
+6. `006_admin.sql` — flags `is_admin`, `deactivated_at`, `last_login_at` + table `user_school_access`
+7. `007_replace_dashboard_steps_rpc.sql` — RPC PL/pgSQL atomique pour le PATCH steps
+8. `008_edh_scope.sql` — `dashboard_step_refs.event_school_slug` (nullable, NULL = legacy school-scoped) + RPC mise à jour pour persister la nouvelle colonne. Aucun backfill nécessaire.
+
+**Migration manuelle** : ouvrir https://supabase.com/dashboard/project/odmpeakltuzwvtydbpfu/sql/new, coller le contenu du fichier `supabase/migrations/<N>_*.sql`, Run.
 
 ## 7. Variables d'environnement
 
