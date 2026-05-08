@@ -1,16 +1,15 @@
-# WIP — EDH Stats
+# WIP — EDH Dashboard
 
 > Travail en cours. Quand une entrée est livrée → la déplacer vers `features.md` ou supprimer.
 
 ## En cours
 
-(rien — V1 + Base de connaissance + Mes tableaux livrés en prod sur https://edh.messagingme.app)
+(rien — Scope EDH groupe livré 2026-05-08, en plus de la V1 + Base de connaissance + Mes tableaux. Prod sur https://edh.messagingme.app)
 
 ## À traiter dans la prochaine session
 
-(rien d'urgent — Mes tableaux V1 vient d'être livré le 2026-05-01 ;
-les éventuelles évolutions, autres types de report, partage, export
-sont consignées dans `todo.md`).
+- **Cocher l'accès EDH** pour Laura et Sarah dans Admin une fois validé fonctionnellement par Julien.
+- Surveiller la **perf des Stats EDH** : ~9 écoles × ~20 events = ~180 count() en parallèle sur Supabase. Si on voit des 503 / timeouts, refacto en une seule requête `GROUP BY (school_slug, event_ns)` côté Postgres.
 
 ## Notes opérationnelles à jour
 
@@ -71,10 +70,11 @@ Voir `todo.md` pour le backlog complet. Quelques pistes à creuser :
 - Hash IP pour RGPD-strict (clicks.ip actuellement en clair).
 - Retention `clicks` > 1 an + purge auto.
 - Export CSV depuis l'onglet Stats.
-- Dashboard agrégé "toutes écoles confondues".
 - Geo-IP enrichment (`country` reste vide).
 - Cleanup job des fichiers orphelins OpenAI (cas où `DELETE /items/:id`
   échoue côté OpenAI mais réussit côté DB → ghost OpenAI files).
+- Optimiser Stats EDH en une seule requête `GROUP BY (school_slug, event_ns)`
+  au lieu de N count() en parallèle (si problème de perf).
 
 ## Surveillance
 

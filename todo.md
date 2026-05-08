@@ -13,7 +13,7 @@
 - **A/B testing destinations** : split traffic 50/50 entre 2 destinations sur le même slug.
 - **Webhook side-channel sur clic** : notifier un autre service à chaque redirect (utile pour intégration CRM côté client).
 - **DST-safe daily buckets** : actuellement Phase 7 va probablement utiliser un offset hardcodé `+02:00` pour Paris. Si on constate un bug à un changement d'heure (mars/octobre), refacto pour calculer l'offset par-jour via `date-fns-tz`.
-- **Dashboard "tous écoles confondues"** : un onglet en plus de la sélection école qui agrège les 9. Pas demandé mais probable demande future.
+- ~~**Dashboard "tous écoles confondues"**~~ — livré 2026-05-08 sous le nom **EDH groupe** (Phase 19). Cf. `features.md`.
 
 ## Mes tableaux — évolutions post-V1
 

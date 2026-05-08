@@ -3,12 +3,14 @@
 Dashboard multi-écoles pour le client EDH. Cinq fonctions :
 
 1. **URLs trackées** pour templates WhatsApp — slug court → redirect 302 server-side, comptage des clics.
-2. **Stats** — deux sections séparées : (a) volumétrie journalière de chaque custom event mm, (b) volumétrie journalière des clics par URL trackée. Filtre période commun.
-3. **Mes tableaux** — chaque user UI construit ses propres funnels par école. Chaque étape peut **cumuler** plusieurs events (mm + URL mixés), volumes sommés. Drag-and-drop palette → étape (nouvelle ou existante), label éditable par étape, viz bar chart recharts. Persistés en DB et privés.
-4. **Base de connaissance** — alimente le vector store OpenAI de chaque école (4 modes : fichier PDF/TXT, saisie texte, Q/R structurées avec thèmes, import Excel en masse). Gère un vector store par école.
-5. **Admin** — onglet visible uniquement par les admins (Julien, Kelberg, Hassani au moment de l'écriture). Permet d'inviter de nouveaux utilisateurs, de cocher leurs écoles d'accès, et de désactiver les comptes. Les non-admins ne voient ni le tab ni l'URL `/admin`.
+2. **Stats** — deux sections séparées : (a) volumétrie journalière de chaque custom event mm, (b) volumétrie journalière des clics par URL trackée. Filtre période commun. En mode **EDH groupe** (cf. ci-dessous), un accordéon par (école, event) et par (école, URL) avec chip école en préfixe.
+3. **Mes tableaux** — chaque user UI construit ses propres funnels par école. Chaque étape peut **cumuler** plusieurs events (mm + URL mixés), volumes sommés. Drag-and-drop palette → étape (nouvelle ou existante), label éditable par étape, viz bar chart recharts. Persistés en DB et privés. En mode EDH, le cumul peut mixer des events de plusieurs écoles dans la même étape.
+4. **Base de connaissance** — alimente le vector store OpenAI de chaque école (4 modes : fichier PDF/TXT, saisie texte, Q/R structurées avec thèmes, import Excel en masse). Gère un vector store par école. **Pas disponible en mode EDH** (pas de KB groupe, chaque école a son vector store).
+5. **Admin** — onglet visible uniquement par les admins (Julien, Kelberg, Hassani au moment de l'écriture). Permet d'inviter de nouveaux utilisateurs, de cocher leurs écoles d'accès **et l'accès EDH groupe** (10e checkbox), et de désactiver les comptes. Les non-admins ne voient ni le tab ni l'URL `/admin`.
 
-Header niveau 1 : `[Stats] [Base de connaissance] [Admin]` (le 3e onglet visible uniquement aux admins). Sous-nav `[URLs] [Stats] [Mes tableaux]` quand `Stats` est actif.
+**Sidebar** : entrée « EDH groupe » accent ambre en tête, au-dessus des 9 écoles, conditionnelle à l'accès EDH (`user_school_access.school_slug = 'edh'`). Au lancement EDH ouvert à Julien (Laura/Sarah à activer via Admin).
+
+Header niveau 1 : `[Stats] [Base de connaissance] [Admin]` (le 3e onglet visible uniquement aux admins ; **« Base de connaissance » masquée en mode EDH**). Sous-nav `[URLs] [Stats] [Mes tableaux]` quand `Stats` est actif (**« URLs » masqué en mode EDH** — création de slug per-école par nature).
 
 Déployé en Docker sur le VPS OVH `146.59.233.252` derrière NPM, sur le sous-domaine **`edh.messagingme.app`**.
 
@@ -82,8 +84,10 @@ NPM : proxy host id 12 `edh.messagingme.app` → `http://edh-app:3000`, SSL Let'
 - **Pas de RLS Supabase.** L'app utilise le service-role server-side uniquement, jamais d'accès DB depuis le client.
 - **UI 100% française** dans les strings affichées.
 - **Export PDF : `html-to-image`, pas `html2canvas`.** Tailwind v4 émet des couleurs en `oklch()` que `html2canvas` ne sait pas parser → canvas vide. `html-to-image` les supporte. `jspdf` + `html-to-image` sont chargés en dynamic import (`import()`) dans `src/lib/dashboards/export.ts` pour ne pas alourdir le bundle initial.
+- **Scope EDH groupe** : sentinelle `'edh'` distincte des 9 écoles. Stockée en row `user_school_access (user_id, 'edh')` pour matérialiser l'accès, en valeur de cookie `edh_school='edh'` pour matérialiser le scope courant, et en valeur de `dashboards.school_slug='edh'` pour les funnels EDH. `isValidSchoolSlug` reste strict (rejette 'edh') ; `isValidScopeSlug` accepte les deux. Avoir l'accès EDH = pouvoir lire les events des **9 écoles** quel que soit l'ensemble d'écoles cochées par ailleurs.
+- **`event_school_slug` dans `dashboard_step_refs`** : NULL en mode école-précise (legacy), renseigné en mode EDH (car `event_ns` n'est pas globalement unique entre écoles). Contrainte CHECK : doit être NULL pour `step_type='url_click'` (redirect_event_id est déjà un uuid global).
 
-## État courant (2026-05-01)
+## État courant (2026-05-08)
 
 **Prod live : https://edh.messagingme.app**
 
@@ -108,5 +112,6 @@ NPM : proxy host id 12 `edh.messagingme.app` → `http://edh-app:3000`, SSL Let'
 | 16 — Mes tableaux : export Excel (xlsx) + PDF (chart + tableau, html-to-image + jspdf) | ✅ |
 | 17 — Stats refactor : suppression comparaison URL dans accordéons custom events + nouvelle section "Clics URL trackées" séparée | ✅ |
 | 18 — Rename EDH Stats → EDH Dashboard + footer logo MessagingMe (`/logos/messagingme.png`) | ✅ |
+| 19 — Scope EDH groupe (sidebar entry, Stats agrégées per (école, event), Mes tableaux multi-écoles, migration 008 `event_school_slug`) | ✅ |
 
-Container `edh-app` sur réseau Docker `mcp-robot_default` (NPM), proxy host id 12, cert Let's Encrypt id 13 (expires 2026-07-29). Cron 22:00 Europe/Paris actif. 9 écoles avec leur logo, ~3k occurrences messagingme ingérées. 9 vector stores OpenAI configurés (un par école) pour la base de connaissance. Logos servis depuis `/public/logos/<slug>.png` + `/logos/edh.png` (groupe) + `/logos/messagingme.png` (footer "Propulsé par"), middleware whitelist `/logos/`. Module Mes tableaux : tables `dashboards` + `dashboard_steps` + `dashboard_step_refs` (multi-refs par step pour cumul de volumes), auto-save 500ms via PATCH atomique (delete cascade puis re-insert steps + refs). Libs charts/UI : `@dnd-kit/core`+`@dnd-kit/sortable` (drag-and-drop), `recharts` (bar chart) + `reaviz` (funnel trapézoïdal), `xlsx` + `jspdf` + `html-to-image` (export Excel/PDF, dynamic import).
+Container `edh-app` sur réseau Docker `mcp-robot_default` (NPM), proxy host id 12, cert Let's Encrypt id 13 (expires 2026-07-29). Cron 22:00 Europe/Paris actif. 9 écoles avec leur logo, ~3k occurrences messagingme ingérées. 9 vector stores OpenAI configurés (un par école) pour la base de connaissance. Logos servis depuis `/public/logos/<slug>.png` + `/logos/edh.png` (groupe) + `/logos/messagingme.png` (footer "Propulsé par"), middleware whitelist `/logos/`. Module Mes tableaux : tables `dashboards` + `dashboard_steps` + `dashboard_step_refs` (multi-refs par step pour cumul de volumes, `event_school_slug` pour le mode EDH), auto-save 500ms via RPC PL/pgSQL `replace_dashboard_steps` (atomique, transaction Postgres). Libs charts/UI : `@dnd-kit/core`+`@dnd-kit/sortable` (drag-and-drop), `recharts` (bar chart) + `reaviz` (funnel trapézoïdal), `xlsx` + `jspdf` + `html-to-image` (export Excel/PDF, dynamic import). Scope EDH : sentinelle `'edh'` dans `user_school_access` + cookie `edh_school` + `dashboards.school_slug` ; chip école « EFAP / 3WA / … » en préfixe partout (palette, step refs, accordéons stats).
