@@ -41,6 +41,11 @@ export function HeaderTabs({
       match: (p) => p.startsWith("/knowledge"),
     });
   }
+  tabs.push({
+    href: "/analyse-conversation",
+    label: "Analyse conversation",
+    match: (p) => p.startsWith("/analyse-conversation"),
+  });
   if (isAdmin) {
     tabs.push({
       href: "/admin",
