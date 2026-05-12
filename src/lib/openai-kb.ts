@@ -170,6 +170,31 @@ export async function waitForIndexation(
 }
 
 /**
+ * Single-shot status check for a vector store file. Used by the items
+ * listing route to reconcile statuses that got stuck at `in_progress`
+ * because the original upload-time poll timed out before indexation
+ * completed (typically a large or slow-to-process file). Returns the
+ * current OpenAI-side status, or null if the file no longer exists in
+ * the vector store (deleted externally — the caller can flip the row
+ * to `failed` or hide it).
+ */
+export async function getVectorStoreFileStatus(
+  schoolSlug: string,
+  vectorStoreFileId: string
+): Promise<string | null> {
+  const vsId = getVectorStoreId(schoolSlug);
+  const r = await fetchWithRetry(`${VS_BASE}/${vsId}/files/${vectorStoreFileId}`, {
+    headers: vsHeaders(),
+  });
+  if (r.status === 404) return null;
+  if (!r.ok) {
+    throw new Error(`getVectorStoreFileStatus: HTTP ${r.status}`);
+  }
+  const j = (await r.json()) as { status: string };
+  return j.status;
+}
+
+/**
  * Removes a file from the vector store. Does NOT delete the underlying
  * file in Files API — call deleteOpenAIFile(fileId) for that.
  */

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSupabase } from "@/lib/supabase/service";
 import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
+import { getVectorStoreFileStatus } from "@/lib/openai-kb";
 
 export const runtime = "nodejs";
 
@@ -15,7 +16,7 @@ const Query = z.object({
 });
 
 const SELECT_COLS =
-  "id, type, file_name, title, question, answer, theme_id, subtheme_id, status, uploaded_at, uploaded_by";
+  "id, type, file_name, title, question, answer, theme_id, subtheme_id, status, uploaded_at, uploaded_by, vector_store_file_id";
 
 /**
  * Escapes user input before injecting into a supabase .or() filter. Commas
@@ -80,6 +81,51 @@ export async function GET(req: Request) {
 
   const { data: items, count, error } = await listQ;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Lazy reconcile of stuck indexation statuses : the upload-time poll
+  // bails after 60 s and persists whatever status OpenAI reported (often
+  // `in_progress` for larger or slower files). Nothing else writes back
+  // afterwards, so the badge would stay "Indexation en cours" forever.
+  // Here we re-fetch the real status for any non-terminal row in the
+  // current page and update the DB in place. Best-effort : a single
+  // failed call must not break the listing. Bounded by `limit` (≤ 100).
+  const stuck = (items ?? []).filter(
+    (i) =>
+      i.vector_store_file_id &&
+      i.status !== "completed" &&
+      i.status !== "failed"
+  );
+  if (stuck.length > 0) {
+    await Promise.all(
+      stuck.map(async (it) => {
+        try {
+          const real = await getVectorStoreFileStatus(
+            schoolSlug,
+            it.vector_store_file_id as string
+          );
+          // If file no longer exists in the vector store, flip to `failed`
+          // so the row stops polling. The user can delete it from the UI.
+          const next = real ?? "failed";
+          if (next !== it.status) {
+            await sb
+              .from("knowledge_items")
+              .update({ status: next })
+              .eq("id", it.id);
+            it.status = next;
+          }
+        } catch (err) {
+          console.warn(
+            JSON.stringify({
+              level: "warn",
+              msg: "knowledge_items_reconcile: status check failed",
+              item_id: it.id,
+              err: err instanceof Error ? err.message : String(err),
+            })
+          );
+        }
+      })
+    );
+  }
 
   // Resolve theme + subtheme names in two batched roundtrips.
   const themeIds = Array.from(

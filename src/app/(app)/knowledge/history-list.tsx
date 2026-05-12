@@ -64,23 +64,23 @@ export function HistoryList() {
   }, [page, debouncedQ, type]);
 
   // Poll for items still indexing — re-fetch every 5 s as long as at least
-  // one item < 60 s old has status='in_progress'. Stops automatically once
-  // everything settles. Single ref-guarded interval : we always clear the
-  // previous timer before deciding whether to schedule a new one. This
-  // avoids stacked intervals when filters change concurrently with a poll
-  // tick.
+  // one item is non-terminal (anything other than `completed` / `failed`).
+  // The server-side lazy reconcile in /api/knowledge/items will pick up
+  // the real OpenAI status on each refetch, so the badge eventually
+  // settles even for files that take more than 60 s to index. Single
+  // ref-guarded interval : we always clear the previous timer before
+  // deciding whether to schedule a new one, which avoids stacked
+  // intervals when filters change concurrently with a poll tick.
   const pollerRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     if (pollerRef.current) {
       clearInterval(pollerRef.current);
       pollerRef.current = null;
     }
-    const hasFresh = items.some((it) => {
-      if (it.status === "completed") return false;
-      const age = Date.now() - new Date(it.uploaded_at).getTime();
-      return age < 60_000;
-    });
-    if (!hasFresh) return;
+    const hasPending = items.some(
+      (it) => it.status !== "completed" && it.status !== "failed"
+    );
+    if (!hasPending) return;
     pollerRef.current = setInterval(() => {
       void load();
     }, 5000);
