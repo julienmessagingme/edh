@@ -11,6 +11,7 @@ export default async function KnowledgePage() {
   const school = getSchoolBySlug(schoolSlug);
   return (
     <KnowledgeClient
+      key={schoolSlug}
       schoolSlug={schoolSlug}
       schoolName={school?.name ?? schoolSlug}
     />
