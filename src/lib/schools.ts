@@ -45,6 +45,16 @@ export const SCHOOLS: readonly School[] = [
 
 const SLUG_SET = new Set(SCHOOLS.map((s) => s.slug));
 
+/**
+ * Liste figée des 9 slugs d'école EDH. À utiliser pour restreindre les
+ * requêtes en mode EDH groupe. La DB Supabase est partagée avec d'autres
+ * projets (ex : keolis-auxerre) qui écrivent dans les mêmes tables
+ * mm_events / mm_occurrences / redirect_events / clicks avec leurs propres
+ * school_slug — sans ce filtre les vues "Toutes écoles" agrègent
+ * l'ensemble de la base, pas juste EDH.
+ */
+export const EDH_SCHOOL_SLUGS: readonly string[] = SCHOOLS.map((s) => s.slug);
+
 export function isValidSchoolSlug(slug: string): boolean {
   return SLUG_SET.has(slug);
 }

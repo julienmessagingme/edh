@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getSupabase } from "@/lib/supabase/service";
 import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
-import { getSchoolBySlug, isEdhScope } from "@/lib/schools";
+import { getSchoolBySlug, isEdhScope, EDH_SCHOOL_SLUGS } from "@/lib/schools";
 import { formatInTimeZone } from "date-fns-tz";
 
 export const runtime = "nodejs";
@@ -33,14 +33,20 @@ export async function GET(req: Request) {
   const sb = getSupabase();
   const isEdh = isEdhScope(schoolSlug);
 
-  // En mode EDH, on remonte les events de toutes les écoles confondues.
-  // Sinon on filtre sur l'école courante uniquement.
+  // En mode EDH, on remonte les events des 9 écoles EDH. Sinon on filtre
+  // sur l'école courante. Le filtre IN EDH_SCHOOL_SLUGS est indispensable
+  // car la DB est partagée avec d'autres projets qui écrivent dans
+  // mm_events avec leurs propres school_slug (ex: keolis-auxerre).
   let q = sb
     .from("mm_events")
     .select("school_slug, event_ns, name, description")
     .order("school_slug")
     .order("name");
-  if (!isEdh) q = q.eq("school_slug", schoolSlug);
+  if (isEdh) {
+    q = q.in("school_slug", EDH_SCHOOL_SLUGS as string[]);
+  } else {
+    q = q.eq("school_slug", schoolSlug);
+  }
   const { data: events, error } = await q;
   if (error)
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -83,7 +89,11 @@ export async function GET(req: Request) {
   let syncQuery = sb
     .from("mm_sync_state")
     .select("school_slug, event_ns, last_run_at, last_run_status, last_run_error");
-  if (!isEdh) syncQuery = syncQuery.eq("school_slug", schoolSlug);
+  if (isEdh) {
+    syncQuery = syncQuery.in("school_slug", EDH_SCHOOL_SLUGS as string[]);
+  } else {
+    syncQuery = syncQuery.eq("school_slug", schoolSlug);
+  }
   const { data: syncs } = await syncQuery;
 
   return NextResponse.json({ events: counts, syncs: syncs ?? [] });

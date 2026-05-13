@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase/service";
 import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
-import { getSchoolBySlug, isEdhScope } from "@/lib/schools";
+import { getSchoolBySlug, isEdhScope, EDH_SCHOOL_SLUGS } from "@/lib/schools";
 import type { Palette, PaletteItem } from "@/lib/dashboards/types";
 
 export const runtime = "nodejs";
@@ -17,9 +17,9 @@ export async function GET() {
   const sb = getSupabase();
   const isEdh = isEdhScope(schoolSlug);
 
-  // En mode EDH on ne filtre pas par école : la palette agrège toutes
-  // les écoles. Chaque item porte alors `school_slug` + `school_name`
-  // pour l'affichage (chip).
+  // En mode EDH on agrège sur les 9 écoles EDH (filtre IN obligatoire car
+  // la DB est partagée avec d'autres projets). Chaque item porte alors
+  // `school_slug` + `school_name` pour l'affichage (chip).
   const mmQuery = sb
     .from("mm_events")
     .select("school_slug, event_ns, name")
@@ -33,8 +33,12 @@ export async function GET() {
     .order("name");
 
   const [mmRes, redirectsRes] = await Promise.all([
-    isEdh ? mmQuery : mmQuery.eq("school_slug", schoolSlug),
-    isEdh ? redirectQuery : redirectQuery.eq("school_slug", schoolSlug),
+    isEdh
+      ? mmQuery.in("school_slug", EDH_SCHOOL_SLUGS as string[])
+      : mmQuery.eq("school_slug", schoolSlug),
+    isEdh
+      ? redirectQuery.in("school_slug", EDH_SCHOOL_SLUGS as string[])
+      : redirectQuery.eq("school_slug", schoolSlug),
   ]);
   if (mmRes.error)
     return NextResponse.json({ error: mmRes.error.message }, { status: 500 });
