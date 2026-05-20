@@ -11,13 +11,14 @@ import {
   CartesianGrid,
 } from "recharts";
 import type { ComputedStep } from "@/lib/dashboards/types";
+import { compactStepLabel } from "@/lib/dashboards/types";
 
 const COLORS = ["#27272a", "#3f3f46", "#52525b", "#71717a", "#a1a1aa", "#d4d4d8"];
 
 export function FunnelChart({ steps }: { steps: ComputedStep[] }) {
   if (steps.length === 0) return null;
   const data = steps.map((s, i) => ({
-    label: `${i + 1}. ${s.label}`,
+    label: `${i + 1}. ${compactStepLabel(s)}`,
     count: s.count,
     available: s.available,
   }));

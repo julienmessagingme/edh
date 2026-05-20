@@ -1,5 +1,10 @@
 import * as XLSX from "xlsx";
 import type { ComputedStep } from "./types";
+import { compactStepLabel } from "./types";
+
+// jsPDF + helvetica encode en WinAnsi → U+2192 "→" devient garbage ("!'").
+// On remplace par "–" (en-dash, U+2013) qui est dans cp1252.
+const DASH = "–";
 
 function fileSafeName(s: string): string {
   return (
@@ -44,7 +49,7 @@ export function exportFunnelToExcel(args: {
       prev !== null && prev > 0 ? pct(s.count, prev) : i === 0 ? "—" : "—";
     const convFirst =
       i === 0 ? "—" : first > 0 ? pct(s.count, first) : "—";
-    const label = `${i + 1}. ${s.label}${
+    const label = `${i + 1}. ${compactStepLabel(s)}${
       !s.available ? " (indisponible)" : ""
     }`;
     rows.push([label, s.count, convPrev, convFirst]);
@@ -120,7 +125,7 @@ export async function exportFunnelToPDF(args: {
   pdf.setFont("helvetica", "normal");
   pdf.setTextColor(120);
   pdf.text(
-    `Période : ${fromDate} → ${toDate}   ·   Exporté le ${new Date().toLocaleString("fr-FR")}`,
+    `Période : ${fromDate} ${DASH} ${toDate}   ·   Exporté le ${new Date().toLocaleString("fr-FR")}`,
     margin,
     margin + 26
   );

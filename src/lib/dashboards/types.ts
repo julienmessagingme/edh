@@ -71,6 +71,26 @@ export interface ComputedDashboardData {
   steps: ComputedStep[];
 }
 
+/**
+ * Calcule un label d'étape lisible pour l'affichage (chart, table, exports).
+ *
+ * Cas :
+ *   - 1 seule ref : label de l'étape (qui est égal au label de la ref par défaut).
+ *   - N refs, label CUSTOM (≠ join auto) : on le respecte tel quel.
+ *   - N refs, AUTO-label (issu du join "A + B + C") : on compacte en
+ *     "Cumul de N sources" — beaucoup plus lisible sur un chart à 4 étapes,
+ *     d'autant que le breakdown détaillé est déjà rendu sous chaque étape
+ *     dans la table et déjà visible sous forme de chips dans le builder.
+ */
+export function compactStepLabel(step: ComputedStep): string {
+  if (step.refs.length <= 1) return step.label;
+  const autoLabel = step.refs.map((r) => r.label).join(" + ");
+  if (step.label === autoLabel) {
+    return `Cumul de ${step.refs.length} sources`;
+  }
+  return step.label;
+}
+
 export interface PaletteItem {
   step_type: StepType;
   ref_id: string;

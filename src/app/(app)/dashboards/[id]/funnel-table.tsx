@@ -1,6 +1,7 @@
 "use client";
 
 import type { ComputedStep } from "@/lib/dashboards/types";
+import { compactStepLabel } from "@/lib/dashboards/types";
 
 function pct(num: number, denom: number): string {
   if (denom === 0) return "—";
@@ -33,7 +34,7 @@ export function FunnelTable({ steps }: { steps: ComputedStep[] }) {
                 <td className="py-2 pr-4">
                   <div>
                     <span className="text-zinc-400 mr-2">{i + 1}.</span>
-                    {s.label}
+                    {compactStepLabel(s)}
                     {!s.available && (
                       <span className="ml-2 text-xs text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
                         indisponible
