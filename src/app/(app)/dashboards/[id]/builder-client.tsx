@@ -669,7 +669,7 @@ export function BuilderClient({
           </div>
         </div>
 
-        <div className="grid grid-cols-[240px_1fr_1fr] gap-4">
+        <div className="grid grid-cols-[340px_minmax(0,1fr)_minmax(0,1.2fr)] gap-4">
           <aside className="bg-white border rounded-lg p-3 space-y-4 max-h-[600px] overflow-auto">
             {isCampaignMode ? (
               <div>
@@ -877,7 +877,7 @@ function PaletteRow({ item }: { item: PaletteItem }) {
   return (
     <li
       ref={setNodeRef}
-      className={`flex items-center gap-2 px-2 py-1 hover:bg-zinc-50 rounded text-sm cursor-grab ${
+      className={`flex items-start gap-2 px-2 py-1 hover:bg-zinc-50 rounded text-sm cursor-grab ${
         isDragging ? "opacity-30" : ""
       }`}
       title={fullLabel}
@@ -885,11 +885,14 @@ function PaletteRow({ item }: { item: PaletteItem }) {
       {...listeners}
     >
       {item.school_name && (
-        <span className="text-[10px] font-mono px-1 py-0 rounded bg-amber-100 text-amber-800 shrink-0">
+        <span className="text-[10px] font-mono px-1 py-0 rounded bg-amber-100 text-amber-800 shrink-0 mt-0.5">
           {item.school_name}
         </span>
       )}
-      <span className="truncate flex-1">{item.label}</span>
+      {/* On laisse le label wrapper sur plusieurs lignes plutôt que tronquer :
+          la sidebar est à 340 px, la majorité des labels tiennent sur 1-2 lignes
+          et l'utilisateur lit tout d'un coup d'œil sans dépendre du tooltip. */}
+      <span className="flex-1 leading-snug break-words">{item.label}</span>
     </li>
   );
 }
