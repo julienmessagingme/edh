@@ -235,18 +235,22 @@ export function CampaignEditorDialog({
                 />
               </div>
 
-              <div className="border rounded grid grid-cols-2 max-h-[320px] overflow-hidden">
+              <div className="border rounded flex h-[440px]">
                 <RefList
                   title={`Custom events MM (${filteredMm.length})`}
                   items={filteredMm}
                   selected={selected}
                   onToggle={toggleRef}
+                  searchActive={search.trim().length > 0}
+                  className="flex-1 border-r"
                 />
                 <RefList
                   title={`Clics URL (${filteredUrls.length})`}
                   items={filteredUrls}
                   selected={selected}
                   onToggle={toggleRef}
+                  searchActive={search.trim().length > 0}
+                  className="flex-1"
                 />
               </div>
             </div>
@@ -278,49 +282,135 @@ function RefList({
   items,
   selected,
   onToggle,
+  searchActive,
+  className = "",
 }: {
   title: string;
   items: PaletteItem[];
   selected: Map<string, PaletteItem>;
   onToggle: (p: PaletteItem) => void;
+  /** Si true, on étale tous les groupes (pas d'accordéon) pour que les
+   *  résultats de recherche soient tous visibles. */
+  searchActive: boolean;
+  className?: string;
 }) {
+  // Mode EDH : tous les items ont un school_name → on groupe par école
+  // pour rendre les 113 events digestes via des accordéons. Mode école
+  // précise : pas de chip école → on rend la liste à plat.
+  const isMultiSchool = items.some((p) => !!p.school_name);
+
+  // Map<school_slug, { name, items[] }>, ordre d'apparition préservé.
+  const groups = new Map<
+    string,
+    { name: string; items: PaletteItem[] }
+  >();
+  if (isMultiSchool) {
+    for (const p of items) {
+      const key = p.school_slug ?? "_";
+      const display = p.school_name ?? key;
+      const g = groups.get(key);
+      if (g) g.items.push(p);
+      else groups.set(key, { name: display, items: [p] });
+    }
+  }
+
   return (
-    <div className="overflow-auto border-r last:border-r-0">
-      <h4 className="text-xs uppercase text-zinc-500 px-3 pt-3 pb-1 sticky top-0 bg-white">
+    <div className={`overflow-auto ${className}`}>
+      <h4 className="text-xs uppercase text-zinc-500 px-3 pt-3 pb-1 sticky top-0 bg-white border-b z-10">
         {title}
       </h4>
       {items.length === 0 ? (
         <p className="px-3 py-2 text-xs text-zinc-400">Aucun</p>
-      ) : (
-        <ul>
-          {items.map((p) => {
-            const checked = selected.has(p.ref_id);
+      ) : isMultiSchool ? (
+        // Accordéon par école : <details> natif. Ouvert par défaut quand
+        // une recherche est active, sinon fermé (l'utilisateur déplie ce
+        // qui l'intéresse).
+        <div>
+          {Array.from(groups.values()).map((g) => {
+            const groupChecked = g.items.filter((p) => selected.has(p.ref_id))
+              .length;
             return (
-              <li key={p.ref_id}>
-                <label
-                  className="flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-50 cursor-pointer text-sm"
-                  title={
-                    p.school_name ? `[${p.school_name}] ${p.label}` : p.label
-                  }
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => onToggle(p)}
-                    className="shrink-0"
-                  />
-                  {p.school_name && (
-                    <span className="text-[10px] font-mono px-1 py-0 rounded bg-amber-100 text-amber-800 shrink-0">
-                      {p.school_name}
+              <details
+                key={g.name}
+                open={searchActive || groupChecked > 0}
+                className="border-b last:border-b-0"
+              >
+                <summary className="cursor-pointer select-none px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50 flex items-center gap-2">
+                  <span className="text-[10px] font-mono px-1 py-0 rounded bg-amber-100 text-amber-800">
+                    {g.name}
+                  </span>
+                  <span className="text-zinc-600">{g.items.length}</span>
+                  {groupChecked > 0 && (
+                    <span className="text-zinc-400 ml-auto text-[10px]">
+                      {groupChecked} coché{groupChecked > 1 ? "s" : ""}
                     </span>
                   )}
-                  <span className="truncate flex-1">{p.label}</span>
-                </label>
-              </li>
+                </summary>
+                <ul className="pb-1">
+                  {g.items.map((p) => (
+                    <RefRow
+                      key={p.ref_id}
+                      item={p}
+                      checked={selected.has(p.ref_id)}
+                      onToggle={onToggle}
+                      hideSchoolChip
+                    />
+                  ))}
+                </ul>
+              </details>
             );
           })}
+        </div>
+      ) : (
+        <ul>
+          {items.map((p) => (
+            <RefRow
+              key={p.ref_id}
+              item={p}
+              checked={selected.has(p.ref_id)}
+              onToggle={onToggle}
+            />
+          ))}
         </ul>
       )}
     </div>
+  );
+}
+
+function RefRow({
+  item,
+  checked,
+  onToggle,
+  hideSchoolChip = false,
+}: {
+  item: PaletteItem;
+  checked: boolean;
+  onToggle: (p: PaletteItem) => void;
+  /** Quand on est déjà sous un accordéon « EFAP », inutile de répéter la
+   *  chip école sur chaque ligne. */
+  hideSchoolChip?: boolean;
+}) {
+  return (
+    <li>
+      <label
+        className="flex items-center gap-2 px-3 py-1 hover:bg-zinc-50 cursor-pointer text-sm"
+        title={
+          item.school_name ? `[${item.school_name}] ${item.label}` : item.label
+        }
+      >
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={() => onToggle(item)}
+          className="shrink-0"
+        />
+        {!hideSchoolChip && item.school_name && (
+          <span className="text-[10px] font-mono px-1 py-0 rounded bg-amber-100 text-amber-800 shrink-0">
+            {item.school_name}
+          </span>
+        )}
+        <span className="truncate flex-1">{item.label}</span>
+      </label>
+    </li>
   );
 }
