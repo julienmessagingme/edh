@@ -297,7 +297,12 @@ function RefList({
             const checked = selected.has(p.ref_id);
             return (
               <li key={p.ref_id}>
-                <label className="flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-50 cursor-pointer text-sm">
+                <label
+                  className="flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-50 cursor-pointer text-sm"
+                  title={
+                    p.school_name ? `[${p.school_name}] ${p.label}` : p.label
+                  }
+                >
                   <input
                     type="checkbox"
                     checked={checked}

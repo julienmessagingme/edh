@@ -868,12 +868,19 @@ function PaletteRow({ item }: { item: PaletteItem }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `${PALETTE_PREFIX}${item.ref_id}`,
   });
+  // Tooltip natif : la palette tronque à 240 px, beaucoup de noms d'events
+  // EDH font 30-60 chars. Le `title` permet de lire le label complet au
+  // hover sans avoir à élargir la sidebar.
+  const fullLabel = item.school_name
+    ? `[${item.school_name}] ${item.label}`
+    : item.label;
   return (
     <li
       ref={setNodeRef}
       className={`flex items-center gap-2 px-2 py-1 hover:bg-zinc-50 rounded text-sm cursor-grab ${
         isDragging ? "opacity-30" : ""
       }`}
+      title={fullLabel}
       {...attributes}
       {...listeners}
     >
@@ -999,7 +1006,13 @@ function SortableStepGroup({
               className={`inline-flex items-center gap-1 bg-white border rounded px-2 py-0.5 text-xs ${
                 meta.available ? "" : "opacity-60"
               }`}
-              title={meta.available ? undefined : "Cette source n'existe plus"}
+              title={
+                meta.available
+                  ? meta.schoolName
+                    ? `[${meta.schoolName}] ${meta.label}`
+                    : meta.label
+                  : `${meta.label} (cette source n'existe plus)`
+              }
             >
               {meta.schoolName && (
                 <span className="text-[10px] font-mono px-1 py-0 rounded bg-amber-100 text-amber-800">
@@ -1052,6 +1065,9 @@ function AddRefMenu({
                 key={p.ref_id}
                 onClick={() => onAdd(p)}
                 className="text-sm flex items-center gap-2"
+                title={
+                  p.school_name ? `[${p.school_name}] ${p.label}` : p.label
+                }
               >
                 {p.school_name && (
                   <span className="text-[10px] font-mono px-1 py-0 rounded bg-amber-100 text-amber-800 shrink-0">
@@ -1076,6 +1092,9 @@ function AddRefMenu({
                 key={p.ref_id}
                 onClick={() => onAdd(p)}
                 className="text-sm flex items-center gap-2"
+                title={
+                  p.school_name ? `[${p.school_name}] ${p.label}` : p.label
+                }
               >
                 {p.school_name && (
                   <span className="text-[10px] font-mono px-1 py-0 rounded bg-amber-100 text-amber-800 shrink-0">
