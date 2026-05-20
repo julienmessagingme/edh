@@ -1,20 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast, Toaster } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Trash2, Pencil, Share2, Lock } from "lucide-react";
+import { Trash2, Share2, Lock } from "lucide-react";
 import { SubNavStats } from "../sub-nav-stats";
 import { CampaignEditorDialog } from "./campaign-editor-dialog";
 import type { CampaignListItem } from "@/lib/campaigns/types";
 
 export function CampaignsClient() {
+  const router = useRouter();
   const [campaigns, setCampaigns] = useState<CampaignListItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState<
-    { mode: "new" } | { mode: "edit"; id: string } | null
-  >(null);
+  const [creating, setCreating] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -49,7 +49,7 @@ export function CampaignsClient() {
       <Toaster richColors position="top-right" />
       <header className="flex justify-between items-center">
         <SubNavStats />
-        <Button onClick={() => setEditing({ mode: "new" })}>
+        <Button onClick={() => setCreating(true)}>
           + Nouvelle campagne
         </Button>
       </header>
@@ -72,11 +72,8 @@ export function CampaignsClient() {
             <Card key={c.id} className="p-4">
               <div className="flex items-start justify-between gap-2">
                 <button
-                  onClick={() =>
-                    c.can_edit ? setEditing({ mode: "edit", id: c.id }) : null
-                  }
-                  className="flex-1 min-w-0 text-left hover:underline disabled:cursor-default disabled:no-underline"
-                  disabled={!c.can_edit}
+                  onClick={() => router.push(`/campaigns/${c.id}`)}
+                  className="flex-1 min-w-0 text-left hover:underline"
                 >
                   <h3 className="font-medium truncate">{c.name}</h3>
                   <p className="text-xs text-zinc-500 mt-1 flex items-center gap-1.5">
@@ -97,22 +94,13 @@ export function CampaignsClient() {
                   </p>
                 </button>
                 {c.can_edit && (
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      onClick={() => setEditing({ mode: "edit", id: c.id })}
-                      className="text-zinc-400 hover:text-zinc-900 p-1"
-                      aria-label="Éditer"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => remove(c)}
-                      className="text-zinc-400 hover:text-red-600 p-1"
-                      aria-label="Supprimer"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => remove(c)}
+                    className="text-zinc-400 hover:text-red-600 p-1 shrink-0"
+                    aria-label="Supprimer"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 )}
               </div>
             </Card>
@@ -120,16 +108,19 @@ export function CampaignsClient() {
         </div>
       )}
 
-      {editing && (
+      {creating && (
         <CampaignEditorDialog
-          mode={editing.mode}
-          campaignId={editing.mode === "edit" ? editing.id : null}
+          mode="new"
+          campaignId={null}
           open
           onOpenChange={(o) => {
-            if (!o) {
-              setEditing(null);
-              load();
-            }
+            if (!o) setCreating(false);
+          }}
+          onCreated={(id) => {
+            // Création réussie → on file directement vers l'éditeur du
+            // tableau de la campagne (la dialog se ferme via onOpenChange).
+            setCreating(false);
+            router.push(`/campaigns/${id}`);
           }}
         />
       )}

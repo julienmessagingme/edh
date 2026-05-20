@@ -23,10 +23,13 @@ export async function GET() {
   const { data, error } = await sb
     .from("dashboards")
     .select(
-      "id, school_slug, created_by, name, type, date_preset, date_from, date_to, created_at, updated_at"
+      "id, school_slug, created_by, name, type, date_preset, date_from, date_to, created_at, updated_at, campaign_id"
     )
     .eq("created_by", user.userId)
     .eq("school_slug", schoolSlug)
+    // Les tableaux liés à une campagne (Phase 21+) ne s'affichent pas
+    // dans Mes tableaux : ils s'éditent uniquement via /campaigns/[id].
+    .is("campaign_id", null)
     .order("updated_at", { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

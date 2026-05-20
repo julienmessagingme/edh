@@ -33,6 +33,10 @@ export interface Dashboard {
   date_to: string | null;
   created_at: string;
   updated_at: string;
+  /** Non-NULL ssi le tableau appartient à une campagne (créé via
+   *  `POST /api/campaigns`). Exclu de la liste "Mes tableaux", édité
+   *  uniquement via `/campaigns/[campaign_id]`. */
+  campaign_id: string | null;
 }
 
 export interface DashboardWithSteps extends Dashboard {

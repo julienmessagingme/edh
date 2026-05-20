@@ -157,20 +157,30 @@ Troisième sous-onglet de Stats. Chaque user UI (Julien, EDH) construit ses prop
 
 ## Campagnes
 
-Quatrième sous-onglet de Stats (`[URLs] [Stats] [Mes tableaux] [Campagnes]`). Une campagne est un **regroupement nommé d'events MM et d'URLs trackées** rattaché à une école (ou au scope EDH groupe). Elle ne calcule rien par elle-même — elle sert de **filtre de palette** pour le builder de Mes tableaux : en mode « Par campagne », l'utilisateur ne voit dans sa palette que les briques rattachées à la campagne sélectionnée, ce qui rend l'assemblage d'un funnel beaucoup plus rapide quand on travaille sur une opération précise (JPO mai, relance benin, etc.).
+Quatrième sous-onglet de Stats (`[URLs] [Stats] [Mes tableaux] [Campagnes]`). Une campagne est un **regroupement nommé d'events MM et d'URLs trackées** rattaché à une école (ou au scope EDH groupe), avec **son propre tableau drag-and-drop** lié en 1:1. C'est l'unité de pilotage d'une opération marketing : on définit les briques qu'on veut suivre, puis on construit le funnel dans la foulée.
 
 **Page liste `/campaigns`** :
 
 - Grille de cards : nom de la campagne, badge `Partagée` (icône partage) ou `Privée` (icône cadenas), date de dernière modif.
-- Bouton « + Nouvelle campagne » → modal d'édition.
-- Icônes crayon / poubelle par card pour éditer ou supprimer (visibles uniquement si l'utilisateur courant peut éditer la campagne — cf. visibilité).
+- **Cliquer une card ouvre `/campaigns/[id]`** (l'éditeur drag-and-drop). Bouton poubelle pour supprimer (visible uniquement si l'utilisateur peut éditer la campagne).
+- Bouton « + Nouvelle campagne » → modal de création.
 
-**Modal édition** :
+**Modal de création** (premier passage uniquement) :
 
-- Champ nom + checkbox « Partagée avec l'école » (cochée = visible par tous les utilisateurs de l'école, décochée = privée).
-- Champ recherche pour filtrer la liste des briques.
-- Grille 2 colonnes : à gauche les `Custom events MM` de l'école (avec chip école en mode EDH), à droite les `Clics URL` trackées. On coche les briques à inclure dans la campagne ; le compteur en haut affiche le nombre de briques sélectionnées.
-- Boutons Annuler / Enregistrer.
+- Champ nom + checkbox « Partagée avec l'école ».
+- Sélection optionnelle des briques (recherche + grille 2 colonnes : Custom events MM à gauche, Clics URL à droite, chip école en mode EDH). On peut laisser vide et les ajouter plus tard.
+- Après création : redirection automatique vers `/campaigns/[id]` pour construire le tableau.
+
+**Page éditeur `/campaigns/[id]`** :
+
+- Encadré ambre en haut : nom et toggle Partagée/Privée éditables inline (auto-save 500 ms).
+- En dessous, **le builder drag-and-drop identique à Mes tableaux** :
+  - Palette à gauche **restreinte aux briques de la campagne** (mode strict, pas de select « Tout »).
+  - Bouton « **Modifier les briques** » en haut de la palette → rouvre la modal de sélection des briques (la dialog de création). Après save, la palette du builder se met à jour automatiquement.
+  - Zone d'étapes au centre, viz à droite (barres verticales ou entonnoir), export Excel/PDF, période presets/custom. Comme dans Mes tableaux.
+- Bouton « ← Campagnes » dans le header pour revenir à la liste. Pas de bouton Supprimer ici (supprimer une campagne se fait depuis la liste, et emporte automatiquement le tableau via CASCADE).
+
+**Lien 1:1 avec un tableau** : créer une campagne crée immédiatement un dashboard rattaché (table `dashboards.campaign_id`). Supprimer la campagne supprime le tableau (ON DELETE CASCADE). Les tableaux de campagne n'apparaissent **pas** dans Mes tableaux pour éviter le doublon : ils s'éditent uniquement via leur campagne.
 
 **Visibilité** :
 

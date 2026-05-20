@@ -92,17 +92,26 @@ export async function GET(
   if (!loaded) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const sb = getSupabase();
-  const { data: refsData, error: refsErr } = await sb
-    .from("campaign_refs")
-    .select(
-      "id, position, step_type, event_ns, redirect_event_id, event_school_slug"
-    )
-    .eq("campaign_id", id)
-    .order("position", { ascending: true });
-  if (refsErr)
-    return NextResponse.json({ error: refsErr.message }, { status: 500 });
+  const [refsRes, dashRes] = await Promise.all([
+    sb
+      .from("campaign_refs")
+      .select(
+        "id, position, step_type, event_ns, redirect_event_id, event_school_slug"
+      )
+      .eq("campaign_id", id)
+      .order("position", { ascending: true }),
+    // Résolution du dashboard 1:1 lié (peut être absent pour les campagnes
+    // créées avant la Phase 21 — auquel cas la page front en créera un).
+    sb
+      .from("dashboards")
+      .select("id")
+      .eq("campaign_id", id)
+      .maybeSingle(),
+  ]);
+  if (refsRes.error)
+    return NextResponse.json({ error: refsRes.error.message }, { status: 500 });
 
-  const refs: CampaignRef[] = (refsData ?? []).map((r) => ({
+  const refs: CampaignRef[] = (refsRes.data ?? []).map((r) => ({
     id: r.id,
     position: r.position,
     step_type: r.step_type,
@@ -115,6 +124,7 @@ export async function GET(
     ...loaded.row,
     can_edit: loaded.can_edit,
     refs,
+    dashboard_id: dashRes.data?.id ?? null,
   };
   return NextResponse.json({ campaign });
 }
@@ -150,7 +160,12 @@ export async function PATCH(
   if (parsed.data.is_shared !== undefined)
     fields.is_shared = parsed.data.is_shared;
 
-  if (Object.keys(fields).length > 1) {
+  // Mise à jour de campaigns : on update updated_at dès que l'utilisateur
+  // a touché à quelque chose (incluant les refs), pour que la card
+  // « modifié le X » et le tri liste reflètent la réalité.
+  const hasScalarChange = Object.keys(fields).length > 1;
+  const hasRefsChange = parsed.data.refs !== undefined;
+  if (hasScalarChange || hasRefsChange) {
     const { error } = await sb.from("campaigns").update(fields).eq("id", id);
     if (error)
       return NextResponse.json({ error: error.message }, { status: 500 });

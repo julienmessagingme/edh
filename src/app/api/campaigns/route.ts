@@ -95,10 +95,32 @@ export async function POST(req: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  // Crée immédiatement le dashboard 1:1 lié (Phase 21). Si l'INSERT échoue,
+  // on rollback en supprimant la campagne pour ne pas laisser d'orphelin.
+  // L'ON DELETE CASCADE sur `dashboards.campaign_id` (migration 010) garantit
+  // que toute suppression future de la campagne emportera son dashboard.
+  const { data: dashData, error: dashErr } = await sb
+    .from("dashboards")
+    .insert({
+      school_slug: schoolSlug,
+      created_by: user.userId,
+      name: parsed.data.name,
+      campaign_id: data.id,
+    })
+    .select("id")
+    .single();
+  if (dashErr) {
+    await sb.from("campaigns").delete().eq("id", data.id);
+    return NextResponse.json(
+      { error: `dashboard create: ${dashErr.message}` },
+      { status: 500 }
+    );
+  }
+
   // Refs optionnelles à la création. Si le INSERT échoue, on a une campagne
-  // vide — l'utilisateur peut re-sauver via PATCH. Volontairement non
-  // atomique (le module campagne n'a pas de side-effect calculé, contrairement
-  // à dashboards/replace_dashboard_steps).
+  // sans briques — l'utilisateur peut re-sauver via PATCH. Volontairement
+  // non atomique (le module campagne n'a pas de side-effect calculé,
+  // contrairement à dashboards/replace_dashboard_steps).
   if (parsed.data.refs && parsed.data.refs.length > 0) {
     const rows = parsed.data.refs.map((r, i) => ({
       campaign_id: data.id,
@@ -116,5 +138,5 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ id: data.id });
+  return NextResponse.json({ id: data.id, dashboard_id: dashData.id });
 }

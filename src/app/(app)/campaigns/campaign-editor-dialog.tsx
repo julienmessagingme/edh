@@ -21,6 +21,10 @@ interface Props {
   campaignId: string | null;
   open: boolean;
   onOpenChange: (o: boolean) => void;
+  /** Appelé après une création réussie (mode="new"), avec l'id de la
+   *  nouvelle campagne. Permet au parent de rediriger vers
+   *  `/campaigns/[id]` pour éditer le tableau lié. */
+  onCreated?: (id: string) => void;
 }
 
 export function CampaignEditorDialog({
@@ -28,6 +32,7 @@ export function CampaignEditorDialog({
   campaignId,
   open,
   onOpenChange,
+  onCreated,
 }: Props) {
   const [name, setName] = useState("");
   const [isShared, setIsShared] = useState(false);
@@ -152,7 +157,9 @@ export function CampaignEditorDialog({
           body,
         });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const { id } = (await r.json()) as { id: string };
         toast.success("Campagne créée");
+        onCreated?.(id);
       } else if (campaignId) {
         const r = await fetch(`/api/campaigns/${campaignId}`, {
           method: "PATCH",

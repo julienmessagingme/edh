@@ -83,7 +83,7 @@ export async function GET(
     sb
       .from("dashboards")
       .select(
-        "id, school_slug, created_by, name, type, date_preset, date_from, date_to, created_at, updated_at"
+        "id, school_slug, created_by, name, type, date_preset, date_from, date_to, created_at, updated_at, campaign_id"
       )
       .eq("id", id)
       .single(),

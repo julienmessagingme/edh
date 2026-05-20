@@ -31,4 +31,9 @@ export interface CampaignListItem extends Campaign {
 export interface CampaignWithRefs extends Campaign {
   can_edit: boolean;
   refs: CampaignRef[];
+  /** Id du dashboard 1:1 lié à la campagne (cf. migration 010). Renvoyé
+   *  null si la campagne a été créée avant Phase 21 et n'a pas encore
+   *  son tableau ; auquel cas la page `/campaigns/[id]` proposera de
+   *  le créer à la volée. */
+  dashboard_id: string | null;
 }

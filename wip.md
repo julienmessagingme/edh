@@ -4,11 +4,12 @@
 
 ## En cours
 
-(rien — Campagnes + bar chart vertical livrés 2026-05-20 (Phase 20). Prod sur https://edh.messagingme.app)
+(rien — Phase 21 Campagne↔Tableau lié livrée 2026-05-20. Prod sur https://edh.messagingme.app)
 
-## À appliquer avant déploiement de la Phase 20
+## À appliquer avant déploiement de la Phase 21
 
-- **Migration 009_campaigns.sql** dans Supabase SQL Editor avant de pull/redeploy le container EDH, sinon `/campaigns` cassera (tables absentes).
+- **Migration 010_dashboard_campaign_link.sql** dans Supabase SQL Editor avant de pull/redeploy. Ajoute `dashboards.campaign_id` + index unique partiel.
+- Les campagnes créées en Phase 20 (avant 010) n'ont pas de dashboard lié — la page `/campaigns/[id]` les rattrape via `POST /api/campaigns/[id]/ensure-dashboard` (idempotent, owner uniquement).
 
 ## À traiter dans la prochaine session
 

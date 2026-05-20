@@ -113,15 +113,42 @@ function paletteItemFor(palette: Palette, refId: string): PaletteItem | null {
   );
 }
 
-export function BuilderClient({ dashboardId }: { dashboardId: string }) {
+export interface BuilderClientProps {
+  dashboardId: string;
+  /** Si fourni, le builder fonctionne en "mode campagne" :
+   *  - palette strictement limitée aux briques de la campagne (pas de
+   *    select "Tout") ;
+   *  - bouton "Modifier les briques" qui ouvre la dialog de refs ;
+   *  - header "Tableau de la campagne X" + lien retour /campaigns au lieu
+   *    de /dashboards ;
+   *  - suppression désactivée côté builder (passer par /campaigns). */
+  campaignId?: string;
+  /** Callback invoqué quand l'utilisateur veut modifier la liste des
+   *  briques de la campagne. Fourni en mode campagne uniquement. */
+  onEditCampaignRefs?: () => void;
+  /** Refs courantes de la campagne (passées par la page parente),
+   *  utilisées pour calculer le campaignKeySet sans refetch. */
+  campaignRefsVersion?: number;
+}
+
+export function BuilderClient({
+  dashboardId,
+  campaignId,
+  onEditCampaignRefs,
+  campaignRefsVersion,
+}: BuilderClientProps) {
   const router = useRouter();
+  const isCampaignMode = !!campaignId;
   const [dashboard, setDashboard] = useState<DashboardWithSteps | null>(null);
   const [palette, setPalette] = useState<Palette | null>(null);
   const [campaigns, setCampaigns] = useState<CampaignListItem[]>([]);
   /** id de la campagne choisie comme filtre, ou null pour "Tout". Le filtre
    *  agit uniquement sur l'affichage de la palette (aside + AddRefMenu) ;
-   *  les refs déjà dans les étapes restent visibles inchangées. */
-  const [campaignFilter, setCampaignFilter] = useState<string | null>(null);
+   *  les refs déjà dans les étapes restent visibles inchangées. En mode
+   *  campagne, le filtre est verrouillé sur `campaignId` (cf. effet plus bas). */
+  const [campaignFilter, setCampaignFilter] = useState<string | null>(
+    campaignId ?? null
+  );
   const [campaignKeySet, setCampaignKeySet] = useState<Set<string> | null>(
     null
   );
@@ -202,7 +229,8 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
       setPalette(pJson);
       // Campagnes : si l'API échoue (404, droits, etc.) on dégrade
       // silencieusement vers liste vide — le module est secondaire.
-      if (cRes.ok) {
+      // Inutile en mode campagne (palette déjà verrouillée).
+      if (cRes.ok && !isCampaignMode) {
         const cJson = (await cRes.json()) as { campaigns: CampaignListItem[] };
         setCampaigns(cJson.campaigns ?? []);
       }
@@ -213,7 +241,7 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [dashboardId, router, fetchData]);
+  }, [dashboardId, router, fetchData, isCampaignMode]);
 
   useEffect(() => {
     void load();
@@ -221,6 +249,9 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
 
   // Quand le filtre campagne change : fetch les refs de la campagne pour
   // construire le set de paletteKey autorisées. `null` = pas de filtre.
+  // En mode campagne, le filtre est verrouillé sur `campaignId` et on
+  // refetch aussi quand `campaignRefsVersion` bouge (signal de la page
+  // parente après modif des briques).
   useEffect(() => {
     if (!campaignFilter) {
       setCampaignKeySet(null);
@@ -243,7 +274,7 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
     return () => {
       alive = false;
     };
-  }, [campaignFilter]);
+  }, [campaignFilter, campaignRefsVersion]);
 
   const persist = useCallback(
     (body: Record<string, unknown>) => {
@@ -577,9 +608,18 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
             {saving && (
               <span className="text-xs text-zinc-500">Enregistrement…</span>
             )}
-            <Button variant="outline" onClick={deleteDashboard}>
-              <Trash2 className="h-4 w-4 mr-1" /> Supprimer
-            </Button>
+            {isCampaignMode ? (
+              <Button
+                variant="outline"
+                onClick={() => router.push("/campaigns")}
+              >
+                ← Campagnes
+              </Button>
+            ) : (
+              <Button variant="outline" onClick={deleteDashboard}>
+                <Trash2 className="h-4 w-4 mr-1" /> Supprimer
+              </Button>
+            )}
           </div>
         </header>
 
@@ -631,28 +671,44 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
 
         <div className="grid grid-cols-[240px_1fr_1fr] gap-4">
           <aside className="bg-white border rounded-lg p-3 space-y-4 max-h-[600px] overflow-auto">
-            <div>
-              <label className="text-xs uppercase text-zinc-500 block mb-1">
-                Filtrer
-              </label>
-              <select
-                value={campaignFilter ?? ""}
-                onChange={(e) => setCampaignFilter(e.target.value || null)}
-                className="w-full text-sm border rounded px-2 py-1 bg-white"
-              >
-                <option value="">Tout (palette complète)</option>
-                {campaigns.length > 0 && (
-                  <optgroup label="Par campagne">
-                    {campaigns.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                        {c.is_shared && !c.can_edit ? " (partagée)" : ""}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-              </select>
-            </div>
+            {isCampaignMode ? (
+              <div>
+                <p className="text-xs uppercase text-zinc-500 mb-1">
+                  Briques de la campagne
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onEditCampaignRefs?.()}
+                  className="w-full"
+                >
+                  Modifier les briques
+                </Button>
+              </div>
+            ) : (
+              <div>
+                <label className="text-xs uppercase text-zinc-500 block mb-1">
+                  Filtrer
+                </label>
+                <select
+                  value={campaignFilter ?? ""}
+                  onChange={(e) => setCampaignFilter(e.target.value || null)}
+                  className="w-full text-sm border rounded px-2 py-1 bg-white"
+                >
+                  <option value="">Tout (palette complète)</option>
+                  {campaigns.length > 0 && (
+                    <optgroup label="Par campagne">
+                      {campaigns.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                          {c.is_shared && !c.can_edit ? " (partagée)" : ""}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+            )}
             <div>
               <h4 className="text-xs uppercase text-zinc-500 mb-2">
                 Custom events MM ({displayedPalette.mmEvents.length})
@@ -677,7 +733,9 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
               displayedPalette.redirectEvents.length === 0 && (
                 <p className="text-xs text-zinc-500">
                   {campaignFilter
-                    ? "Cette campagne ne contient aucune brique."
+                    ? isCampaignMode
+                      ? "Aucune brique dans cette campagne. Cliquez sur « Modifier les briques »."
+                      : "Cette campagne ne contient aucune brique."
                     : "Aucun event disponible pour cette école."}
                 </p>
               )}
