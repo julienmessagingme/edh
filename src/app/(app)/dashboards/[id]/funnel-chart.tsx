@@ -8,6 +8,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   Cell,
+  CartesianGrid,
 } from "recharts";
 import type { ComputedStep } from "@/lib/dashboards/types";
 
@@ -21,21 +22,36 @@ export function FunnelChart({ steps }: { steps: ComputedStep[] }) {
     available: s.available,
   }));
   return (
-    <div className="w-full" style={{ height: Math.max(160, steps.length * 48) }}>
+    <div className="w-full" style={{ height: 320 }}>
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart layout="vertical" data={data} margin={{ left: 0, right: 40 }}>
-          <XAxis type="number" hide />
-          <YAxis
-            type="category"
+        <BarChart
+          data={data}
+          margin={{ top: 24, right: 16, left: 0, bottom: 56 }}
+        >
+          <CartesianGrid stroke="#f4f4f5" vertical={false} />
+          <XAxis
             dataKey="label"
-            width={180}
-            tick={{ fontSize: 12 }}
+            interval={0}
+            angle={-25}
+            textAnchor="end"
+            height={56}
+            tick={{ fontSize: 11, fill: "#52525b" }}
+          />
+          <YAxis
+            type="number"
+            allowDecimals={false}
+            tick={{ fontSize: 11, fill: "#52525b" }}
+            width={48}
           />
           <Tooltip
             formatter={(v: unknown) => [String(v), "Volume"]}
             cursor={{ fill: "#fafafa" }}
           />
-          <Bar dataKey="count" radius={[0, 4, 4, 0]} label={{ position: "right", fontSize: 11 }}>
+          <Bar
+            dataKey="count"
+            radius={[4, 4, 0, 0]}
+            label={{ position: "top", fontSize: 11, fill: "#3f3f46" }}
+          >
             {data.map((d, i) => (
               <Cell
                 key={i}

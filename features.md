@@ -42,7 +42,7 @@ L'accès EDH = lecture sur les **9 écoles**, indépendamment de l'ensemble d'é
 
 Le header expose 2 ou 3 grands modes selon le rôle :
 
-- **Stats** (par défaut) — URLs trackées + analytics MessagingMe + tableaux personnalisés. Sous-nav : `[URLs] [Stats] [Mes tableaux]`.
+- **Stats** (par défaut) — URLs trackées + analytics MessagingMe + tableaux personnalisés + campagnes. Sous-nav : `[URLs] [Stats] [Mes tableaux] [Campagnes]`.
 - **Base de connaissance** — alimente le vector store OpenAI de l'école courante (voir plus bas).
 - **Admin** — visible **uniquement par les administrateurs**. Gestion des utilisateurs (voir plus bas).
 
@@ -136,8 +136,9 @@ Troisième sous-onglet de Stats. Chaque user UI (Julien, EDH) construit ses prop
 - En haut : nom éditable inline, sélecteurs de période (presets `7j / 30j / 90j` + dates `du / au` custom), bouton « Supprimer ».
 - À gauche, palette en deux sections : `Custom events MM` (les events messagingme de l'école) et `Clics URL` (les URLs trackées non archivées de l'école). On glisse un item de la palette vers la zone d'étapes pour créer une nouvelle étape, ou vers une étape existante pour **cumuler** la source dans cette étape.
 - Au milieu, zone funnel : les étapes choisies dans l'ordre. Chaque étape a un **label éditable** (placeholder = composition auto `A + B + C`), une badge `MM / URL / Mixte`, et une liste de **chips** pour ses sources. Bouton `+ Ajouter` dans chaque étape pour ajouter une source via menu déroulant. Drag-and-drop pour réordonner les étapes, ✕ pour retirer une chip (si dernière chip → l'étape entière est supprimée), poubelle pour supprimer toute l'étape. Une chip dont la source a disparu (event mm supprimé, URL archivée) s'affiche grisée.
+- À gauche aussi, **filtre de palette** : un select en haut permet de basculer entre « Tout (palette complète) » et « Par campagne » → la palette n'affiche plus que les briques rattachées à la campagne choisie. Cf. section **Campagnes** plus bas.
 - À droite, visualisation avec **toggle 2 modes** :
-  - **Barres** (par défaut) : bar chart horizontal recharts, longueur = volume cumulé des sources de l'étape.
+  - **Barres** (par défaut) : bar chart vertical recharts, hauteur = volume cumulé des sources de l'étape. Labels d'étapes en bas inclinés à -25° pour ne pas se chevaucher.
   - **Entonnoir** : funnel trapézoïdal reaviz purple+glow, conteneur light avec halo subtil. Pas de labels écrits dans l'entonnoir → tooltip premium au hover (étape + volume + conversion vs précédent + conversion vs étape 1).
   Le choix de mode est persisté en `localStorage` par navigateur.
 - Sous le chart : table récap (étape, volume, conv. vs précédent, conv. vs étape 1, breakdown des sources individuelles si > 1).
@@ -151,6 +152,31 @@ Troisième sous-onglet de Stats. Chaque user UI (Julien, EDH) construit ses prop
 **Sémantique du funnel V1** : on compare des **volumes purs** d'occurrences sur la période. Pas de matching utilisateur entre étapes — c'est une vue esthétique pour repérer les ordres de grandeur et les ratios entre étapes consécutives, pas une analyse causale par utilisateur.
 
 **Switch d'école** : la liste et le builder se rechargent automatiquement (pattern `key={schoolSlug}`). Si l'on est sur le builder d'un tableau qui appartient à une autre école que celle qui vient d'être sélectionnée, l'API renvoie 404 et on est redirigé vers `/dashboards` avec un toast.
+
+**Statut :** ✅ livré.
+
+## Campagnes
+
+Quatrième sous-onglet de Stats (`[URLs] [Stats] [Mes tableaux] [Campagnes]`). Une campagne est un **regroupement nommé d'events MM et d'URLs trackées** rattaché à une école (ou au scope EDH groupe). Elle ne calcule rien par elle-même — elle sert de **filtre de palette** pour le builder de Mes tableaux : en mode « Par campagne », l'utilisateur ne voit dans sa palette que les briques rattachées à la campagne sélectionnée, ce qui rend l'assemblage d'un funnel beaucoup plus rapide quand on travaille sur une opération précise (JPO mai, relance benin, etc.).
+
+**Page liste `/campaigns`** :
+
+- Grille de cards : nom de la campagne, badge `Partagée` (icône partage) ou `Privée` (icône cadenas), date de dernière modif.
+- Bouton « + Nouvelle campagne » → modal d'édition.
+- Icônes crayon / poubelle par card pour éditer ou supprimer (visibles uniquement si l'utilisateur courant peut éditer la campagne — cf. visibilité).
+
+**Modal édition** :
+
+- Champ nom + checkbox « Partagée avec l'école » (cochée = visible par tous les utilisateurs de l'école, décochée = privée).
+- Champ recherche pour filtrer la liste des briques.
+- Grille 2 colonnes : à gauche les `Custom events MM` de l'école (avec chip école en mode EDH), à droite les `Clics URL` trackées. On coche les briques à inclure dans la campagne ; le compteur en haut affiche le nombre de briques sélectionnées.
+- Boutons Annuler / Enregistrer.
+
+**Visibilité** :
+
+- Une campagne `Privée` n'est visible que par son auteur.
+- Une campagne `Partagée` est visible par tous les utilisateurs ayant accès à l'école (ou à EDH groupe) — mais reste éditable et supprimable uniquement par son auteur (ou un administrateur). Les autres utilisateurs peuvent l'utiliser comme filtre de palette.
+- Scope école strict : une campagne créée sur EFAP n'apparaît que pour les users qui ont EFAP comme école courante. Une campagne créée en mode EDH n'apparaît qu'en mode EDH (et peut mixer des briques des 9 écoles dans le même sac).
 
 **Statut :** ✅ livré.
 

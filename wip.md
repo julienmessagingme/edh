@@ -4,7 +4,11 @@
 
 ## En cours
 
-(rien — Scope EDH groupe livré 2026-05-08, en plus de la V1 + Base de connaissance + Mes tableaux. Prod sur https://edh.messagingme.app)
+(rien — Campagnes + bar chart vertical livrés 2026-05-20 (Phase 20). Prod sur https://edh.messagingme.app)
+
+## À appliquer avant déploiement de la Phase 20
+
+- **Migration 009_campaigns.sql** dans Supabase SQL Editor avant de pull/redeploy le container EDH, sinon `/campaigns` cassera (tables absentes).
 
 ## À traiter dans la prochaine session
 

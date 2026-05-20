@@ -52,6 +52,11 @@ import type {
   DatePreset,
   ComputedDashboardData,
 } from "@/lib/dashboards/types";
+import type {
+  CampaignListItem,
+  CampaignWithRefs,
+} from "@/lib/campaigns/types";
+import { paletteKeyOf } from "@/lib/campaigns/utils";
 
 const PRESETS: { key: DatePreset; label: string }[] = [
   { key: "7d", label: "7j" },
@@ -112,6 +117,14 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
   const router = useRouter();
   const [dashboard, setDashboard] = useState<DashboardWithSteps | null>(null);
   const [palette, setPalette] = useState<Palette | null>(null);
+  const [campaigns, setCampaigns] = useState<CampaignListItem[]>([]);
+  /** id de la campagne choisie comme filtre, ou null pour "Tout". Le filtre
+   *  agit uniquement sur l'affichage de la palette (aside + AddRefMenu) ;
+   *  les refs déjà dans les étapes restent visibles inchangées. */
+  const [campaignFilter, setCampaignFilter] = useState<string | null>(null);
+  const [campaignKeySet, setCampaignKeySet] = useState<Set<string> | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeDrag, setActiveDrag] = useState<{
@@ -172,9 +185,10 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [dRes, pRes] = await Promise.all([
+      const [dRes, pRes, cRes] = await Promise.all([
         fetch(`/api/dashboards/${dashboardId}`),
         fetch(`/api/dashboards/palette`),
+        fetch(`/api/campaigns`),
       ]);
       if (dRes.status === 404) {
         toast.error("Tableau introuvable");
@@ -186,6 +200,12 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
       const pJson = (await pRes.json()) as Palette;
       setDashboard(dJson.dashboard);
       setPalette(pJson);
+      // Campagnes : si l'API échoue (404, droits, etc.) on dégrade
+      // silencieusement vers liste vide — le module est secondaire.
+      if (cRes.ok) {
+        const cJson = (await cRes.json()) as { campaigns: CampaignListItem[] };
+        setCampaigns(cJson.campaigns ?? []);
+      }
       // Charge la viz avec l'état DB courant.
       void fetchData();
     } catch {
@@ -198,6 +218,32 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Quand le filtre campagne change : fetch les refs de la campagne pour
+  // construire le set de paletteKey autorisées. `null` = pas de filtre.
+  useEffect(() => {
+    if (!campaignFilter) {
+      setCampaignKeySet(null);
+      return;
+    }
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch(`/api/campaigns/${campaignFilter}`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const { campaign } = (await r.json()) as { campaign: CampaignWithRefs };
+        if (!alive) return;
+        setCampaignKeySet(new Set(campaign.refs.map(paletteKeyOf)));
+      } catch {
+        if (!alive) return;
+        toast.error("Erreur de chargement de la campagne");
+        setCampaignKeySet(new Set()); // filtre vide → palette vide, plus parlant qu'un crash silencieux
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [campaignFilter]);
 
   const persist = useCallback(
     (body: Record<string, unknown>) => {
@@ -503,6 +549,19 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
 
   const stepIds = dashboard.steps.map((s) => s.id);
 
+  // Palette filtrée par la campagne courante. La palette complète (`palette`)
+  // reste utilisée par `resolveRef` et `paletteItemFor` pour résoudre les
+  // refs déjà présentes dans les étapes ; on filtre seulement ce qu'on
+  // EXPOSE comme briques à glisser/ajouter.
+  const displayedPalette: Palette = campaignKeySet
+    ? {
+        mmEvents: palette.mmEvents.filter((p) => campaignKeySet.has(p.ref_id)),
+        redirectEvents: palette.redirectEvents.filter((p) =>
+          campaignKeySet.has(p.ref_id)
+        ),
+      }
+    : palette;
+
   return (
     <DndContext
       sensors={sensors}
@@ -573,29 +632,53 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
         <div className="grid grid-cols-[240px_1fr_1fr] gap-4">
           <aside className="bg-white border rounded-lg p-3 space-y-4 max-h-[600px] overflow-auto">
             <div>
+              <label className="text-xs uppercase text-zinc-500 block mb-1">
+                Filtrer
+              </label>
+              <select
+                value={campaignFilter ?? ""}
+                onChange={(e) => setCampaignFilter(e.target.value || null)}
+                className="w-full text-sm border rounded px-2 py-1 bg-white"
+              >
+                <option value="">Tout (palette complète)</option>
+                {campaigns.length > 0 && (
+                  <optgroup label="Par campagne">
+                    {campaigns.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                        {c.is_shared && !c.can_edit ? " (partagée)" : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+            <div>
               <h4 className="text-xs uppercase text-zinc-500 mb-2">
-                Custom events MM ({palette.mmEvents.length})
+                Custom events MM ({displayedPalette.mmEvents.length})
               </h4>
               <ul className="space-y-1">
-                {palette.mmEvents.map((p) => (
+                {displayedPalette.mmEvents.map((p) => (
                   <PaletteRow key={p.ref_id} item={p} />
                 ))}
               </ul>
             </div>
             <div>
               <h4 className="text-xs uppercase text-zinc-500 mb-2">
-                Clics URL ({palette.redirectEvents.length})
+                Clics URL ({displayedPalette.redirectEvents.length})
               </h4>
               <ul className="space-y-1">
-                {palette.redirectEvents.map((p) => (
+                {displayedPalette.redirectEvents.map((p) => (
                   <PaletteRow key={p.ref_id} item={p} />
                 ))}
               </ul>
             </div>
-            {palette.mmEvents.length === 0 &&
-              palette.redirectEvents.length === 0 && (
+            {displayedPalette.mmEvents.length === 0 &&
+              displayedPalette.redirectEvents.length === 0 && (
                 <p className="text-xs text-zinc-500">
-                  Aucun event disponible pour cette école.
+                  {campaignFilter
+                    ? "Cette campagne ne contient aucune brique."
+                    : "Aucun event disponible pour cette école."}
                 </p>
               )}
           </aside>
@@ -615,7 +698,7 @@ export function BuilderClient({ dashboardId }: { dashboardId: string }) {
                       index={i}
                       placeholder={stepDisplayLabel(s)}
                       resolveRef={resolveRef}
-                      palette={palette}
+                      palette={displayedPalette}
                       onLabelChange={(v) => setStepLabel(i, v)}
                       onAddRef={(p) => addRefToStep(i, p)}
                       onRemoveRef={(refIdx) => removeRefFromStep(i, refIdx)}

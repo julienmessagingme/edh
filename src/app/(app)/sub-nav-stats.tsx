@@ -28,6 +28,11 @@ export function SubNavStats() {
       href: "/dashboards",
       label: "Mes tableaux",
       match: (p) => p.startsWith("/dashboards"),
+    },
+    {
+      href: "/campaigns",
+      label: "Campagnes",
+      match: (p) => p.startsWith("/campaigns"),
     }
   );
 

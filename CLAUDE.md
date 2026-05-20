@@ -1,23 +1,24 @@
 # CLAUDE.md — EDH Dashboard
 
-Dashboard multi-écoles pour le client EDH. Cinq fonctions :
+Dashboard multi-écoles pour le client EDH. Six fonctions :
 
 1. **URLs trackées** pour templates WhatsApp — slug court → redirect 302 server-side, comptage des clics.
 2. **Stats** — deux sections séparées : (a) volumétrie journalière de chaque custom event mm, (b) volumétrie journalière des clics par URL trackée. Filtre période commun. En mode **EDH groupe** (cf. ci-dessous), un accordéon par (école, event) et par (école, URL) avec chip école en préfixe.
-3. **Mes tableaux** — chaque user UI construit ses propres funnels par école. Chaque étape peut **cumuler** plusieurs events (mm + URL mixés), volumes sommés. Drag-and-drop palette → étape (nouvelle ou existante), label éditable par étape, viz bar chart recharts. Persistés en DB et privés. En mode EDH, le cumul peut mixer des events de plusieurs écoles dans la même étape.
-4. **Base de connaissance** — alimente le vector store OpenAI de chaque école (4 modes : fichier PDF/TXT, saisie texte, Q/R structurées avec thèmes, import Excel en masse). Gère un vector store par école. **Pas disponible en mode EDH** (pas de KB groupe, chaque école a son vector store).
-5. **Admin** — onglet visible uniquement par les admins (Julien, Kelberg, Hassani au moment de l'écriture). Permet d'inviter de nouveaux utilisateurs, de cocher leurs écoles d'accès **et l'accès EDH groupe** (10e checkbox), et de désactiver les comptes. Les non-admins ne voient ni le tab ni l'URL `/admin`.
+3. **Mes tableaux** — chaque user UI construit ses propres funnels par école. Chaque étape peut **cumuler** plusieurs events (mm + URL mixés), volumes sommés. Drag-and-drop palette → étape (nouvelle ou existante), label éditable par étape, viz bar chart **vertical** recharts ou entonnoir reaviz. Persistés en DB et privés. La palette peut être filtrée par campagne (cf. ci-dessous). En mode EDH, le cumul peut mixer des events de plusieurs écoles dans la même étape.
+4. **Campagnes** — chaque user UI peut créer des **campagnes** (regroupements nommés de plusieurs events mm + URLs trackées), privées ou partagées avec l'école. Servent de filtre pour la palette de Mes tableaux. Scope école strict (ou scope EDH groupe).
+5. **Base de connaissance** — alimente le vector store OpenAI de chaque école (4 modes : fichier PDF/TXT, saisie texte, Q/R structurées avec thèmes, import Excel en masse). Gère un vector store par école. **Pas disponible en mode EDH** (pas de KB groupe, chaque école a son vector store).
+6. **Admin** — onglet visible uniquement par les admins (Julien, Kelberg, Hassani au moment de l'écriture). Permet d'inviter de nouveaux utilisateurs, de cocher leurs écoles d'accès **et l'accès EDH groupe** (10e checkbox), et de désactiver les comptes. Les non-admins ne voient ni le tab ni l'URL `/admin`.
 
 **Sidebar** : entrée « EDH groupe » accent ambre en tête, au-dessus des 9 écoles, conditionnelle à l'accès EDH (`user_school_access.school_slug = 'edh'`). Au lancement EDH ouvert à Julien (Laura/Sarah à activer via Admin).
 
-Header niveau 1 : `[Stats] [Base de connaissance] [Admin]` (le 3e onglet visible uniquement aux admins ; **« Base de connaissance » masquée en mode EDH**). Sous-nav `[URLs] [Stats] [Mes tableaux]` quand `Stats` est actif (**« URLs » masqué en mode EDH** — création de slug per-école par nature).
+Header niveau 1 : `[Stats] [Base de connaissance] [Admin]` (le 3e onglet visible uniquement aux admins ; **« Base de connaissance » masquée en mode EDH**). Sous-nav `[URLs] [Stats] [Mes tableaux] [Campagnes]` quand `Stats` est actif (**« URLs » masqué en mode EDH** — création de slug per-école par nature).
 
 Déployé en Docker sur le VPS OVH `146.59.233.252` derrière NPM, sur le sous-domaine **`edh.messagingme.app`**.
 
 ## Documentation
 
 - **`documentation.md`** — archi, stack, schéma DB, env vars, déploiement, patterns code
-- **`features.md`** — vue produit : URLs + Stats + Mes tableaux + Base de connaissance + Admin côté utilisateur
+- **`features.md`** — vue produit : URLs + Stats + Mes tableaux + Campagnes + Base de connaissance + Admin côté utilisateur
 - **`wip.md`** — travail en cours
 - **`todo.md`** — backlog (RGPD, retention, export, cleanup orphans OpenAI, etc.)
 - **`docs/plans/2026-04-30-edh-stats-design.md`** — design V1 (URLs + Stats)
@@ -113,5 +114,6 @@ NPM : proxy host id 12 `edh.messagingme.app` → `http://edh-app:3000`, SSL Let'
 | 17 — Stats refactor : suppression comparaison URL dans accordéons custom events + nouvelle section "Clics URL trackées" séparée | ✅ |
 | 18 — Rename EDH Stats → EDH Dashboard + footer logo MessagingMe (`/logos/messagingme.png`) | ✅ |
 | 19 — Scope EDH groupe (sidebar entry, Stats agrégées per (école, event), Mes tableaux multi-écoles, migration 008 `event_school_slug`) | ✅ |
+| 20 — Bar chart vertical + module Campagnes (tables `campaigns` + `campaign_refs`, migration 009, privé/partagé, filtre palette dans Mes tableaux) | ✅ |
 
 Container `edh-app` sur réseau Docker `mcp-robot_default` (NPM), proxy host id 12, cert Let's Encrypt id 13 (expires 2026-07-29). Cron 22:00 Europe/Paris actif. 9 écoles avec leur logo, ~3k occurrences messagingme ingérées. 9 vector stores OpenAI configurés (un par école) pour la base de connaissance. Logos servis depuis `/public/logos/<slug>.png` + `/logos/edh.png` (groupe) + `/logos/messagingme.png` (footer "Propulsé par"), middleware whitelist `/logos/`. Module Mes tableaux : tables `dashboards` + `dashboard_steps` + `dashboard_step_refs` (multi-refs par step pour cumul de volumes, `event_school_slug` pour le mode EDH), auto-save 500ms via RPC PL/pgSQL `replace_dashboard_steps` (atomique, transaction Postgres). Libs charts/UI : `@dnd-kit/core`+`@dnd-kit/sortable` (drag-and-drop), `recharts` (bar chart) + `reaviz` (funnel trapézoïdal), `xlsx` + `jspdf` + `html-to-image` (export Excel/PDF, dynamic import). Scope EDH : sentinelle `'edh'` dans `user_school_access` + cookie `edh_school` + `dashboards.school_slug` ; chip école « EFAP / 3WA / … » en préfixe partout (palette, step refs, accordéons stats).
