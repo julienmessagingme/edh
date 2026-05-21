@@ -6,10 +6,31 @@
 
 (rien — Phase 21 Campagne↔Tableau lié livrée 2026-05-20. Prod sur https://edh.messagingme.app)
 
-## À appliquer avant déploiement de la Phase 21
+## Seed data temporaire en place — à cleaner mercredi/jeudi 2026-05-22 ou 23
 
-- **Migration 010_dashboard_campaign_link.sql** dans Supabase SQL Editor avant de pull/redeploy. Ajoute `dashboards.campaign_id` + index unique partiel.
-- Les campagnes créées en Phase 20 (avant 010) n'ont pas de dashboard lié — la page `/campaigns/[id]` les rattrape via `POST /api/campaigns/[id]/ensure-dashboard` (idempotent, owner uniquement).
+Julien a demandé du fake data pour démos pendant 2-3 jours. Injecté le 2026-05-20 :
+
+- **6713 occurrences fake** réparties sur 7 jours, 4 écoles (EFAP, Brassart, CESINE, ESEC), 4 events « CTWA EN: entrée campagne / Etape 1..4 ».
+- **Marqueurs pour cleanup** :
+  - Brassart/CESINE/ESEC : `mm_events.event_ns LIKE 'seed_%'` (les 4 events n'existaient pas naturellement → on les a créés)
+  - EFAP : `mm_occurrences.id <= -1000000000` (les events existaient déjà → on a ajouté des occurrences avec id négatif sur les events réels)
+- **Le cron 22h ne touche PAS au seed** (vérifié dans `src/lib/messagingme/sync.ts`) : pas de `DELETE` dans le code, watermark positif côté messagingme, ids seed négatifs → cohabitation propre.
+
+**SQL de cleanup à passer dans Supabase SQL Editor** :
+
+```sql
+BEGIN;
+-- Cascade FK ON DELETE CASCADE → supprime aussi les occurrences seed des 3 écoles
+DELETE FROM mm_events
+  WHERE school_slug IN ('brassart','cesine','esec')
+    AND event_ns LIKE 'seed_%';
+-- Restantes : les occurrences seed EFAP (events réels EFAP qu'on garde)
+DELETE FROM mm_occurrences WHERE id <= -1000000000;
+COMMIT;
+-- Validation (les 2 doivent retourner 0)
+SELECT count(*) FROM mm_occurrences WHERE id <= -1000000000;
+SELECT count(*) FROM mm_events WHERE event_ns LIKE 'seed_%';
+```
 
 ## À traiter dans la prochaine session
 

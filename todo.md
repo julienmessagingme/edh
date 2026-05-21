@@ -42,3 +42,11 @@
 - Ajouter Sentry ou un APM si on commence à voir des erreurs en prod silencieuses.
 - Activer Cloudflare cache pour `/r/<slug>` ? Mauvaise idée probablement (on perdrait le comptage par clic). À étudier si la latence devient un problème.
 - Page admin pour gérer les users (ajout/suppression) au lieu du seed script en CLI. Pas avant qu'on ait > 2 users.
+
+## Dette technique Phase 20-21 (code-review 🟡)
+
+Issues identifiées dans la revue de code du 2026-05-20, non bloquantes :
+
+- **`RefSchema` zod dupliqué** entre `src/app/api/campaigns/route.ts` et `src/app/api/campaigns/[id]/route.ts` (même `discriminatedUnion("step_type", [...])` à l'identique). Extraire dans `src/lib/campaigns/schema.ts` quand on touchera à la validation des refs.
+- **`campaign-editor-dialog.tsx` : `eslint-disable` sur `useMemo`** de `filteredMm` / `filteredUrls`. Le `filterItems` n'est pas dans les deps (utilise `search` en closure). Inliner le filtre directement dans le `useMemo` au lieu d'appeler `filterItems`, sans changer le comportement.
+- **Race UI campagne fantôme** : si une campagne sélectionnée comme filtre dans `BuilderClient` est supprimée par un autre user pendant qu'on l'utilise (cas partagée), on tombe sur un toast "Erreur de chargement" + filtre vide silencieux. Cas rare ; à traiter si on voit le bug en prod.
