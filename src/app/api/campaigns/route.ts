@@ -23,9 +23,6 @@ const PostBody = z.object({
   name: z.string().trim().min(1).max(200),
   is_shared: z.boolean().optional(),
   refs: z.array(RefSchema).max(200).optional(),
-  /** Type de viz du tableau lié, défini à la création. Propagé au dashboard
-   *  1:1 créé automatiquement. Défaut 'funnel'. */
-  type: z.enum(["funnel", "pie"]).optional(),
 });
 
 export async function GET() {
@@ -102,6 +99,9 @@ export async function POST(req: Request) {
   // on rollback en supprimant la campagne pour ne pas laisser d'orphelin.
   // L'ON DELETE CASCADE sur `dashboards.campaign_id` (migration 010) garantit
   // que toute suppression future de la campagne emportera son dashboard.
+  // Le dashboard d'une campagne est toujours créé en 'funnel'. Le pie
+  // chart est réservé aux tableaux libres dans Mes tableaux (décision
+  // produit pour garder l'usage campagne focalisé sur la conversion).
   const { data: dashData, error: dashErr } = await sb
     .from("dashboards")
     .insert({
@@ -109,7 +109,7 @@ export async function POST(req: Request) {
       created_by: user.userId,
       name: parsed.data.name,
       campaign_id: data.id,
-      type: parsed.data.type ?? "funnel",
+      type: "funnel",
     })
     .select("id")
     .single();

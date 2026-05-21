@@ -149,7 +149,7 @@ Troisième sous-onglet de Stats. Chaque user UI (Julien, EDH) construit ses prop
 
 **Étapes cumulées (rapports cumul)** : on peut empiler plusieurs sources dans une même étape — par exemple `relance benin V1` + `relance benin V2` + `relance ICART V1` formant l'étape `Relances`, dont le volume affiché = somme des trois. Mix mm + URL autorisé. Si une source disparaît, l'étape continue de fonctionner avec les sources restantes ; l'étape n'est marquée « indisponible » que si toutes ses sources ont disparu.
 
-**Pie chart (alternative au funnel)** : à la création d'un tableau, on peut choisir « Pie chart » au lieu de « Funnel ». Le builder est identique (drag-and-drop, cumul multi-sources par part, label éditable), seule la viz change :
+**Pie chart (alternative au funnel)** : à la création d'un tableau **dans Mes tableaux**, on peut choisir « Pie chart » au lieu de « Funnel ». Les tableaux de campagne restent forcément funnel (décision produit : la campagne sert au suivi de conversion étape-à-étape). Le builder est identique (drag-and-drop, cumul multi-sources par part, label éditable), seule la viz change :
 - Camembert recharts avec une palette 8 couleurs cycliques, pourcentages affichés sur chaque part > 5 %, légende sur le côté droit.
 - Tableau récap avec colonnes `Part`, `Volume`, `% du total` (base 100), plus une ligne « Total » en pied.
 - Pas de toggle Barres/Entonnoir (un seul mode de viz pour le pie).
