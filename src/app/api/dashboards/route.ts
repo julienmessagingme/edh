@@ -8,6 +8,9 @@ export const runtime = "nodejs";
 
 const PostBody = z.object({
   name: z.string().trim().min(1).max(200),
+  /** Type de viz à la création. Défaut 'funnel' pour compat avec les
+   *  anciens clients qui n'envoient pas ce champ. */
+  type: z.enum(["funnel", "pie"]).optional(),
 });
 
 export async function GET() {
@@ -57,6 +60,7 @@ export async function POST(req: Request) {
       school_slug: schoolSlug,
       created_by: user.userId,
       name: parsed.data.name,
+      type: parsed.data.type ?? "funnel",
     })
     .select("id")
     .single();

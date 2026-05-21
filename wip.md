@@ -4,7 +4,11 @@
 
 ## En cours
 
-(rien — Phase 21 Campagne↔Tableau lié livrée 2026-05-20. Prod sur https://edh.messagingme.app)
+(rien — Phase 22 Pie chart livrée 2026-05-21. Prod sur https://edh.messagingme.app)
+
+## À appliquer avant déploiement de la Phase 22
+
+- **Migration 011_dashboard_type_pie.sql** dans Supabase SQL Editor avant de pull/redeploy. Étend `CHECK type IN ('funnel') → ('funnel','pie')`. Sans ça, l'INSERT d'un nouveau dashboard avec `type='pie'` rebondit avec une violation CHECK.
 
 ## Seed data temporaire en place — à cleaner mercredi/jeudi 2026-05-22 ou 23
 

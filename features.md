@@ -127,8 +127,8 @@ Troisième sous-onglet de Stats. Chaque user UI (Julien, EDH) construit ses prop
 
 **Page liste `/dashboards`** :
 
-- Grille de cards : nom du tableau, type (funnel pour V1), date de dernière modification.
-- Bouton « + Nouveau funnel » → modal qui demande juste un nom → ouvre le builder.
+- Grille de cards : nom du tableau, type (funnel ou pie chart), date de dernière modification.
+- Bouton « + Nouveau funnel » → modal qui demande un nom + **un type de viz** (funnel ou pie chart, radio) → ouvre le builder.
 - Icône poubelle par card pour supprimer.
 
 **Builder `/dashboards/[id]`** :
@@ -148,6 +148,13 @@ Troisième sous-onglet de Stats. Chaque user UI (Julien, EDH) construit ses prop
 - Auto-save : chaque modif (renommage, ordre, étapes, sources, dates, label) est sauvegardée silencieusement après 500 ms (toast « Enregistrement… » discret en haut à droite).
 
 **Étapes cumulées (rapports cumul)** : on peut empiler plusieurs sources dans une même étape — par exemple `relance benin V1` + `relance benin V2` + `relance ICART V1` formant l'étape `Relances`, dont le volume affiché = somme des trois. Mix mm + URL autorisé. Si une source disparaît, l'étape continue de fonctionner avec les sources restantes ; l'étape n'est marquée « indisponible » que si toutes ses sources ont disparu.
+
+**Pie chart (alternative au funnel)** : à la création d'un tableau, on peut choisir « Pie chart » au lieu de « Funnel ». Le builder est identique (drag-and-drop, cumul multi-sources par part, label éditable), seule la viz change :
+- Camembert recharts avec une palette 8 couleurs cycliques, pourcentages affichés sur chaque part > 5 %, légende sur le côté droit.
+- Tableau récap avec colonnes `Part`, `Volume`, `% du total` (base 100), plus une ligne « Total » en pied.
+- Pas de toggle Barres/Entonnoir (un seul mode de viz pour le pie).
+- Export Excel et PDF adaptés (volumes + % du total au lieu des conversions étape-à-étape).
+Utile pour répondre à des questions de répartition (« quelle école apporte le plus de volume sur l'Etape 1 ? ») plutôt que de progression dans un funnel.
 
 **Sémantique du funnel V1** : on compare des **volumes purs** d'occurrences sur la période. Pas de matching utilisateur entre étapes — c'est une vue esthétique pour repérer les ordres de grandeur et les ratios entre étapes consécutives, pas une analyse causale par utilisateur.
 

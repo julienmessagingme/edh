@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import type { ComputedStep } from "./types";
+import type { ComputedStep, DashboardType } from "./types";
 import { compactStepLabel } from "./types";
 
 // jsPDF + helvetica encode en WinAnsi → U+2192 "→" devient garbage ("!'").
@@ -23,24 +23,62 @@ function pct(num: number, denom: number): string {
 }
 
 /**
- * Exporte le tableau (Étape, Volume, Conv vs précédent, Conv vs étape 1) en
- * fichier .xlsx. Inclut les sources individuelles indentées sous l'étape
- * quand celle-ci en cumule plusieurs.
+ * Exporte le tableau d'un dashboard en .xlsx. Format adapté au type :
+ *
+ *   - funnel : colonnes [Étape, Volume, Conv. vs précédent, Conv. vs étape 1]
+ *              + sources indentées sous chaque étape qui cumule plusieurs refs.
+ *   - pie    : colonnes [Part, Volume, % du total] + sources indentées de la
+ *              même façon, et ligne « Total » en pied de tableau.
  */
 export function exportFunnelToExcel(args: {
   dashboardName: string;
   fromDate: string;
   toDate: string;
   steps: ComputedStep[];
+  type?: DashboardType;
 }) {
-  const { dashboardName, fromDate, toDate, steps } = args;
-  const first = steps[0]?.count ?? 0;
+  const { dashboardName, fromDate, toDate, steps, type = "funnel" } = args;
   const rows: Array<Array<string | number>> = [];
 
   rows.push(["Tableau", dashboardName]);
   rows.push(["Période", `${fromDate} → ${toDate}`]);
   rows.push(["Exporté le", new Date().toLocaleString("fr-FR")]);
   rows.push([]);
+
+  if (type === "pie") {
+    const total = steps.reduce(
+      (acc, s) => (s.available ? acc + s.count : acc),
+      0
+    );
+    rows.push(["Part", "Volume", "% du total"]);
+    steps.forEach((s, i) => {
+      const label = `${i + 1}. ${compactStepLabel(s)}${
+        !s.available ? " (indisponible)" : ""
+      }`;
+      const share = s.available && total > 0 ? pct(s.count, total) : "—";
+      rows.push([label, s.count, share]);
+      if (s.refs.length > 1) {
+        s.refs.forEach((r) => {
+          rows.push([
+            `    · ${r.label}${!r.available ? " (indisponible)" : ""}`,
+            r.count,
+            "",
+          ]);
+        });
+      }
+    });
+    rows.push(["Total", total, "100,0%"]);
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws["!cols"] = [{ wch: 50 }, { wch: 12 }, { wch: 14 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Pie chart");
+    XLSX.writeFile(wb, `${fileSafeName(dashboardName)}.xlsx`);
+    return;
+  }
+
+  // Funnel (défaut)
+  const first = steps[0]?.count ?? 0;
   rows.push(["Étape", "Volume", "Conv. vs précédent", "Conv. vs étape 1"]);
 
   steps.forEach((s, i) => {

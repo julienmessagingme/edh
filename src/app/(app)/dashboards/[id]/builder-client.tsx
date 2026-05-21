@@ -36,6 +36,8 @@ import { SubNavStats } from "../../sub-nav-stats";
 import { FunnelChart } from "./funnel-chart";
 import { FancyFunnelChart } from "./funnel-chart-fancy";
 import { FunnelTable } from "./funnel-table";
+import { PieChartViz } from "./pie-chart";
+import { PieTable } from "./pie-table";
 import {
   exportFunnelToExcel,
   exportFunnelToPDF,
@@ -432,6 +434,7 @@ export function BuilderClient({
         fromDate: computed.from,
         toDate: computed.to,
         steps: computed.steps,
+        type: dashboard.type,
       });
     } catch {
       toast.error("Erreur d'export Excel");
@@ -741,7 +744,12 @@ export function BuilderClient({
               )}
           </aside>
 
-          <StepsZone hasSteps={dashboard.steps.length > 0}>
+          <StepsZone
+            hasSteps={dashboard.steps.length > 0}
+            title={
+              dashboard.type === "pie" ? "Parts du pie chart" : "Étapes du funnel"
+            }
+          >
             <SortableContext items={stepIds} strategy={verticalListSortingStrategy}>
               {dashboard.steps.length === 0 ? (
                 <p className="text-zinc-500 text-sm py-8 text-center">
@@ -770,32 +778,38 @@ export function BuilderClient({
 
           <section className="bg-white border rounded-lg p-3 min-h-[200px] space-y-3">
             <div className="flex items-center justify-between gap-2">
-              <h4 className="text-xs uppercase text-zinc-500">Funnel</h4>
+              <h4 className="text-xs uppercase text-zinc-500">
+                {dashboard.type === "pie" ? "Pie chart" : "Funnel"}
+              </h4>
               <div className="flex items-center gap-2">
-                <div className="flex border rounded overflow-hidden text-xs">
-                  <button
-                    onClick={() => changeView("bar")}
-                    className={`px-2 py-1 ${
-                      view === "bar"
-                        ? "bg-zinc-900 text-white"
-                        : "bg-white text-zinc-600 hover:bg-zinc-50"
-                    }`}
-                    aria-pressed={view === "bar"}
-                  >
-                    Barres
-                  </button>
-                  <button
-                    onClick={() => changeView("funnel")}
-                    className={`px-2 py-1 border-l ${
-                      view === "funnel"
-                        ? "bg-zinc-900 text-white"
-                        : "bg-white text-zinc-600 hover:bg-zinc-50"
-                    }`}
-                    aria-pressed={view === "funnel"}
-                  >
-                    Entonnoir
-                  </button>
-                </div>
+                {/* Toggle Barres/Entonnoir réservé au funnel — pie n'a
+                    qu'une seule viz (camembert) donc on cache le toggle. */}
+                {dashboard.type === "funnel" && (
+                  <div className="flex border rounded overflow-hidden text-xs">
+                    <button
+                      onClick={() => changeView("bar")}
+                      className={`px-2 py-1 ${
+                        view === "bar"
+                          ? "bg-zinc-900 text-white"
+                          : "bg-white text-zinc-600 hover:bg-zinc-50"
+                      }`}
+                      aria-pressed={view === "bar"}
+                    >
+                      Barres
+                    </button>
+                    <button
+                      onClick={() => changeView("funnel")}
+                      className={`px-2 py-1 border-l ${
+                        view === "funnel"
+                          ? "bg-zinc-900 text-white"
+                          : "bg-white text-zinc-600 hover:bg-zinc-50"
+                      }`}
+                      aria-pressed={view === "funnel"}
+                    >
+                      Entonnoir
+                    </button>
+                  </div>
+                )}
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     className="inline-flex items-center gap-1 border rounded px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
@@ -823,7 +837,9 @@ export function BuilderClient({
             {dashboard.steps.length === 0 ? (
               <div className="flex items-center justify-center h-40">
                 <p className="text-zinc-400 text-sm">
-                  Ajoutez au moins une étape pour voir la visualisation.
+                  Ajoutez au moins{" "}
+                  {dashboard.type === "pie" ? "une part" : "une étape"} pour
+                  voir la visualisation.
                 </p>
               </div>
             ) : computing && !computed ? (
@@ -839,12 +855,21 @@ export function BuilderClient({
                     Période : {computed.from} → {computed.to}
                   </p>
                 )}
-                {view === "bar" ? (
-                  <FunnelChart steps={computed.steps} />
+                {dashboard.type === "pie" ? (
+                  <>
+                    <PieChartViz steps={computed.steps} />
+                    <PieTable steps={computed.steps} />
+                  </>
                 ) : (
-                  <FancyFunnelChart steps={computed.steps} />
+                  <>
+                    {view === "bar" ? (
+                      <FunnelChart steps={computed.steps} />
+                    ) : (
+                      <FancyFunnelChart steps={computed.steps} />
+                    )}
+                    <FunnelTable steps={computed.steps} />
+                  </>
                 )}
-                <FunnelTable steps={computed.steps} />
               </div>
             ) : (
               <p className="text-zinc-500 text-sm">Chargement…</p>
@@ -899,9 +924,11 @@ function PaletteRow({ item }: { item: PaletteItem }) {
 
 function StepsZone({
   hasSteps,
+  title,
   children,
 }: {
   hasSteps: boolean;
+  title: string;
   children: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: STEPS_ZONE_ID });
@@ -912,7 +939,7 @@ function StepsZone({
         isOver && !hasSteps ? "bg-zinc-50 border-zinc-400" : ""
       }`}
     >
-      <h4 className="text-xs uppercase text-zinc-500 mb-2">Étapes du funnel</h4>
+      <h4 className="text-xs uppercase text-zinc-500 mb-2">{title}</h4>
       {children}
     </section>
   );

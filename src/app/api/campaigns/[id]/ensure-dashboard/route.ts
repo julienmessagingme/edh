@@ -66,6 +66,10 @@ export async function POST(
   // Création. Le dashboard hérite du nom de la campagne (synchronisé au
   // moment de la création, libre de diverger après — pas de propagation
   // automatique du rename de la campagne sur le dashboard, et inversement).
+  // Type par défaut 'funnel' (les campagnes pré-Phase-22 ne portent pas de
+  // type ; pour les nouvelles, POST /api/campaigns crée déjà le dashboard
+  // avec le bon type, donc ce ensure-dashboard ne s'applique qu'aux
+  // campagnes legacy).
   const { data: created, error } = await sb
     .from("dashboards")
     .insert({
@@ -73,6 +77,7 @@ export async function POST(
       created_by: campaign.created_by,
       name: campaign.name,
       campaign_id: id,
+      type: "funnel",
     })
     .select("id")
     .single();

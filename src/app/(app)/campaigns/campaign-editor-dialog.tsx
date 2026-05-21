@@ -15,6 +15,8 @@ import { toast } from "sonner";
 import type { Palette, PaletteItem } from "@/lib/dashboards/types";
 import type { CampaignWithRefs } from "@/lib/campaigns/types";
 import { paletteKeyOf } from "@/lib/campaigns/utils";
+import type { DashboardType } from "@/lib/dashboards/types";
+import { DashboardTypeRadio } from "../dashboards/new-dashboard-dialog";
 
 interface Props {
   mode: "new" | "edit";
@@ -36,6 +38,10 @@ export function CampaignEditorDialog({
 }: Props) {
   const [name, setName] = useState("");
   const [isShared, setIsShared] = useState(false);
+  /** Type de viz à appliquer au dashboard 1:1 — utilisé uniquement en mode
+   *  "new". En mode "edit", le type est figé (on n'expose pas de switch
+   *  après création pour garder une UI simple). */
+  const [type, setType] = useState<DashboardType>("funnel");
   const [palette, setPalette] = useState<Palette | null>(null);
   /** Map<paletteKey, PaletteItem> : porte tout le contexte nécessaire
    *  au moment du save (step_type + event_school_slug). */
@@ -78,6 +84,7 @@ export function CampaignEditorDialog({
         } else {
           setName("");
           setIsShared(false);
+          setType("funnel");
           setSelected(new Map());
         }
       } catch {
@@ -144,11 +151,13 @@ export function CampaignEditorDialog({
         };
       });
 
-      const body = JSON.stringify({
-        name: trimmed,
-        is_shared: isShared,
-        refs,
-      });
+      // En mode new on inclut le `type` pour que le dashboard 1:1 soit
+      // créé avec la bonne viz. En mode edit, le type est figé.
+      const body = JSON.stringify(
+        mode === "new"
+          ? { name: trimmed, is_shared: isShared, refs, type }
+          : { name: trimmed, is_shared: isShared, refs }
+      );
 
       if (mode === "new") {
         const r = await fetch("/api/campaigns", {
@@ -220,6 +229,13 @@ export function CampaignEditorDialog({
                   : "Visible uniquement par vous"}
               </span>
             </div>
+
+            {mode === "new" && (
+              <div className="space-y-2">
+                <Label>Type de visualisation</Label>
+                <DashboardTypeRadio value={type} onChange={setType} />
+              </div>
+            )}
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">

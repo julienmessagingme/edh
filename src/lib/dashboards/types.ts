@@ -1,6 +1,6 @@
 export type StepType = "mm_event" | "url_click";
 export type DatePreset = "7d" | "30d" | "90d" | "custom";
-export type DashboardType = "funnel";
+export type DashboardType = "funnel" | "pie";
 
 export interface StepRef {
   id: string;

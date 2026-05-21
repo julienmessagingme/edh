@@ -23,6 +23,9 @@ const PostBody = z.object({
   name: z.string().trim().min(1).max(200),
   is_shared: z.boolean().optional(),
   refs: z.array(RefSchema).max(200).optional(),
+  /** Type de viz du tableau lié, défini à la création. Propagé au dashboard
+   *  1:1 créé automatiquement. Défaut 'funnel'. */
+  type: z.enum(["funnel", "pie"]).optional(),
 });
 
 export async function GET() {
@@ -106,6 +109,7 @@ export async function POST(req: Request) {
       created_by: user.userId,
       name: parsed.data.name,
       campaign_id: data.id,
+      type: parsed.data.type ?? "funnel",
     })
     .select("id")
     .single();
