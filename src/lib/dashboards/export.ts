@@ -79,7 +79,21 @@ export function exportFunnelToExcel(args: {
 
   // Funnel (défaut)
   const first = steps[0]?.count ?? 0;
-  rows.push(["Étape", "Volume", "Conv. vs précédent", "Conv. vs étape 1"]);
+  const hasMetaCost = steps.some(
+    (s) => s.meta_cost_eur != null && s.meta_cost_eur > 0
+  );
+  const totalMetaCost = hasMetaCost
+    ? steps.reduce((acc, s) => acc + (s.meta_cost_eur ?? 0), 0)
+    : 0;
+
+  const header: Array<string | number> = [
+    "Étape",
+    "Volume",
+    "Conv. vs précédent",
+    "Conv. vs étape 1",
+  ];
+  if (hasMetaCost) header.push("Coût Meta (EUR)");
+  rows.push(header);
 
   steps.forEach((s, i) => {
     const prev = i > 0 ? steps[i - 1].count : null;
@@ -90,22 +104,38 @@ export function exportFunnelToExcel(args: {
     const label = `${i + 1}. ${compactStepLabel(s)}${
       !s.available ? " (indisponible)" : ""
     }`;
-    rows.push([label, s.count, convPrev, convFirst]);
+    const row: Array<string | number> = [label, s.count, convPrev, convFirst];
+    if (hasMetaCost) {
+      // Nombre natif Excel pour permettre les calculs/format conditionnels
+      // côté tableur. Vide si pas de coût pour cette étape.
+      row.push(s.meta_cost_eur != null ? Number(s.meta_cost_eur.toFixed(4)) : "");
+    }
+    rows.push(row);
     if (s.refs.length > 1) {
       s.refs.forEach((r) => {
-        rows.push([
+        const subRow: Array<string | number> = [
           `    · ${r.label}${!r.available ? " (indisponible)" : ""}`,
           r.count,
           "",
           "",
-        ]);
+        ];
+        if (hasMetaCost) {
+          subRow.push(r.meta_cost_eur != null ? Number(r.meta_cost_eur.toFixed(4)) : "");
+        }
+        rows.push(subRow);
       });
     }
   });
 
+  if (hasMetaCost) {
+    rows.push(["Total coût Meta", "", "", "", Number(totalMetaCost.toFixed(2))]);
+  }
+
   const ws = XLSX.utils.aoa_to_sheet(rows);
   // Largeurs de colonne raisonnables
-  ws["!cols"] = [{ wch: 50 }, { wch: 12 }, { wch: 18 }, { wch: 18 }];
+  ws["!cols"] = hasMetaCost
+    ? [{ wch: 50 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 16 }]
+    : [{ wch: 50 }, { wch: 12 }, { wch: 18 }, { wch: 18 }];
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Funnel");

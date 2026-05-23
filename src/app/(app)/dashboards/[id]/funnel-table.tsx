@@ -8,9 +8,24 @@ function pct(num: number, denom: number): string {
   return `${((num / denom) * 100).toFixed(1)}%`;
 }
 
+/** Format EUR sans décimale pour > 100 €, 2 décimales en dessous. */
+function fmtEur(v: number): string {
+  return v >= 100
+    ? `${v.toFixed(0)} €`
+    : `${v.toFixed(2).replace(".", ",")} €`;
+}
+
 export function FunnelTable({ steps }: { steps: ComputedStep[] }) {
   if (steps.length === 0) return null;
   const first = steps[0]?.count ?? 0;
+  // Colonne « Coût Meta » affichée uniquement si au moins une étape porte
+  // un coût. Évite une colonne vide dans 99 % des funnels EDH.
+  const hasMetaCost = steps.some(
+    (s) => s.meta_cost_eur != null && s.meta_cost_eur > 0
+  );
+  const totalMetaCost = hasMetaCost
+    ? steps.reduce((acc, s) => acc + (s.meta_cost_eur ?? 0), 0)
+    : 0;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -20,6 +35,14 @@ export function FunnelTable({ steps }: { steps: ComputedStep[] }) {
             <th className="py-2 pr-4 text-right">Volume</th>
             <th className="py-2 pr-4 text-right">Conv. vs précédent</th>
             <th className="py-2 pr-4 text-right">Conv. vs étape 1</th>
+            {hasMetaCost && (
+              <th
+                className="py-2 pr-4 text-right"
+                title="Coût Meta WhatsApp marketing estimé, calculé par indicatif pays sur les events porteurs d'un numéro de tel"
+              >
+                Coût Meta
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -70,9 +93,25 @@ export function FunnelTable({ steps }: { steps: ComputedStep[] }) {
                 <td className="py-2 pr-4 text-right tabular-nums text-zinc-600">
                   {i === 0 ? "—" : pct(s.count, first)}
                 </td>
+                {hasMetaCost && (
+                  <td className="py-2 pr-4 text-right tabular-nums text-zinc-600">
+                    {s.meta_cost_eur != null ? fmtEur(s.meta_cost_eur) : "—"}
+                  </td>
+                )}
               </tr>
             );
           })}
+          {hasMetaCost && (
+            <tr className="font-semibold border-t-2 border-zinc-300">
+              <td className="py-2 pr-4">Total coût Meta</td>
+              <td className="py-2 pr-4" />
+              <td className="py-2 pr-4" />
+              <td className="py-2 pr-4" />
+              <td className="py-2 pr-4 text-right tabular-nums">
+                {fmtEur(totalMetaCost)}
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>

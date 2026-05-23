@@ -4,6 +4,7 @@ import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 import { resolveDateRange } from "@/lib/dashboards/date-range";
 import { getSchoolBySlug, isEdhScope } from "@/lib/schools";
+import { metaMarketingCostEur } from "@/lib/meta-pricing";
 import type {
   ComputedRef,
   ComputedStep,
@@ -144,7 +145,7 @@ export async function GET(
     involvedSchools.length > 0
       ? sb
           .from("mm_events")
-          .select("school_slug, event_ns, name")
+          .select("school_slug, event_ns, name, text_label")
           .in("school_slug", involvedSchools)
       : Promise.resolve({ data: [], error: null }),
     redirectIdList.length > 0
@@ -155,13 +156,20 @@ export async function GET(
       : Promise.resolve({ data: [], error: null }),
   ]);
 
-  const mmLabels = new Map<MmKey, string>();
+  // mmLabels = nom de l'event + indicateur "porteur de texte" (text_label
+  // non vide). On stocke l'objet entier pour pouvoir décider, dans
+  // computeRef, si l'event mérite un calcul de coût Meta.
+  const mmLabels = new Map<MmKey, { name: string; textLabel: string }>();
   for (const r of (mmLabelsRes.data as {
     school_slug: string;
     event_ns: string;
     name: string;
+    text_label: string | null;
   }[]) ?? []) {
-    mmLabels.set(`${r.school_slug}|${r.event_ns}`, r.name);
+    mmLabels.set(`${r.school_slug}|${r.event_ns}`, {
+      name: r.name,
+      textLabel: (r.text_label ?? "").trim(),
+    });
   }
   const redirectLabels = new Map<
     string,
@@ -214,20 +222,56 @@ export async function GET(
             : {}),
         };
       }
-      const { count } = await sb
-        .from("mm_occurrences")
-        .select("*", { count: "exact", head: true })
-        .eq("school_slug", refSchool)
-        .eq("event_ns", evNs)
-        .gte("occurred_at", fromTs)
-        .lt("occurred_at", toTs);
-      const baseLabel = mmLabels.get(key!)!;
+      const meta = mmLabels.get(key!)!;
+      const isPhoneCarrier = meta.textLabel.length > 0;
+
+      let count: number;
+      let metaCostEur: number | null;
+      if (isPhoneCarrier) {
+        // Event porteur (text_label non vide) → on fetch les text_value
+        // pour calculer le coût Meta marketing par indicatif. Limite à
+        // 10 000 rows par event/période (au-delà, le coût sera sous-évalué
+        // et un warning serait à ajouter en V2).
+        const { data: occRows, error: occErr } = await sb
+          .from("mm_occurrences")
+          .select("text_value")
+          .eq("school_slug", refSchool)
+          .eq("event_ns", evNs)
+          .gte("occurred_at", fromTs)
+          .lt("occurred_at", toTs)
+          .limit(10000);
+        if (occErr) {
+          count = 0;
+          metaCostEur = null;
+        } else {
+          const rows = (occRows ?? []) as { text_value: string | null }[];
+          count = rows.length;
+          metaCostEur = rows.reduce(
+            (acc, r) =>
+              acc + (r.text_value ? metaMarketingCostEur(r.text_value) : 0),
+            0
+          );
+        }
+      } else {
+        // Event "compteur" classique : count(*) suffit.
+        const { count: c } = await sb
+          .from("mm_occurrences")
+          .select("*", { count: "exact", head: true })
+          .eq("school_slug", refSchool)
+          .eq("event_ns", evNs)
+          .gte("occurred_at", fromTs)
+          .lt("occurred_at", toTs);
+        count = c ?? 0;
+        metaCostEur = null;
+      }
+
       return {
         step_type: "mm_event",
         ref_id: evNs,
-        label: chipLabel(baseLabel, refSchool),
-        count: count ?? 0,
+        label: chipLabel(meta.name, refSchool),
+        count,
         available: true,
+        meta_cost_eur: metaCostEur,
         ...(isEdh
           ? {
               school_slug: refSchool,
@@ -281,12 +325,24 @@ export async function GET(
         computedRefs.length === 0
           ? "(vide)"
           : computedRefs.map((r) => r.label).join(" + ");
+      // Coût Meta de l'étape = somme des coûts des refs porteurs. NULL si
+      // aucune ref n'a de coût → la colonne « Coût Meta » de la table
+      // récap reste masquée pour cette étape (et masquée globalement si
+      // aucune étape n'a de coût).
+      const carriers = computedRefs.filter(
+        (r) => r.available && r.meta_cost_eur != null
+      );
+      const metaCostEur =
+        carriers.length > 0
+          ? carriers.reduce((acc, r) => acc + (r.meta_cost_eur ?? 0), 0)
+          : null;
       return {
         position: s.position,
         label: s.label && s.label.trim() ? s.label : fallbackLabel,
         count: anyAvailable ? total : 0,
         available: anyAvailable && computedRefs.length > 0,
         refs: computedRefs,
+        meta_cost_eur: metaCostEur,
       };
     })
   );

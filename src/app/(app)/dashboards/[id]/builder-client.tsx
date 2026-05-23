@@ -214,18 +214,34 @@ export function BuilderClient({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [dRes, pRes, cRes] = await Promise.all([
-        fetch(`/api/dashboards/${dashboardId}`),
-        fetch(`/api/dashboards/palette`),
-        fetch(`/api/campaigns`),
-      ]);
+      // En mode pie, on charge une palette filtrée aux events porteurs
+      // de texte (text_label non vide) — seuls candidats à une viz de
+      // répartition par valeur. On commence par fetcher le dashboard
+      // pour connaître son `type`, puis on lance la palette adaptée.
+      // Pour éviter une double-requête séquentielle, on tente d'abord
+      // avec textOnly=true SI on est sur /campaigns/[id] (le mode pie
+      // n'y existe pas) la valeur est ignorée. Plus simple : on fetch
+      // la version "complète" et on filtre côté client si pie. Mais ça
+      // exposerait des events inutiles dans la palette d'un pie. Donc
+      // on fait la séquence : 1) dashboard, 2) palette + campaigns en parallèle.
+      const dRes = await fetch(`/api/dashboards/${dashboardId}`);
       if (dRes.status === 404) {
         toast.error("Tableau introuvable");
         router.replace("/dashboards");
         return;
       }
-      if (!dRes.ok || !pRes.ok) throw new Error("HTTP");
+      if (!dRes.ok) throw new Error("HTTP");
       const dJson = (await dRes.json()) as { dashboard: DashboardWithSteps };
+      const isPie = dJson.dashboard.type === "pie";
+      const paletteUrl = isPie
+        ? `/api/dashboards/palette?textOnly=true`
+        : `/api/dashboards/palette`;
+
+      const [pRes, cRes] = await Promise.all([
+        fetch(paletteUrl),
+        fetch(`/api/campaigns`),
+      ]);
+      if (!pRes.ok) throw new Error("HTTP");
       const pJson = (await pRes.json()) as Palette;
       setDashboard(dJson.dashboard);
       setPalette(pJson);

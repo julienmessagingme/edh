@@ -52,6 +52,11 @@ export interface ComputedRef {
   /** Renseigné en mode EDH pour préfixer le label avec l'école (chip). */
   school_slug?: string;
   school_name?: string;
+  /** Coût Meta WhatsApp marketing estimé (en EUR) pour cet event, calculé
+   *  à partir des `text_value` des occurrences sur la période. Renseigné
+   *  uniquement pour les mm_event dont `text_label` est non vide (donc
+   *  porteurs d'un numéro de tel ou autre valeur scalaire). NULL sinon. */
+  meta_cost_eur?: number | null;
 }
 
 export interface ComputedStep {
@@ -63,6 +68,10 @@ export interface ComputedStep {
   /** false ssi toutes les refs sont unavailable (ou si refs est vide). */
   available: boolean;
   refs: ComputedRef[];
+  /** Somme des `meta_cost_eur` des refs porteurs (text_label non vide).
+   *  NULL si aucune ref de l'étape n'est porteur — on n'affiche pas la
+   *  colonne « Coût Meta » dans la table dans ce cas. */
+  meta_cost_eur?: number | null;
 }
 
 export interface ComputedDashboardData {
