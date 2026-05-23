@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { lookupSlug } from "@/lib/redirect/lookup";
 import { checkRate } from "@/lib/redirect/rate-limit";
 import { getClientIp } from "@/lib/redirect/client-ip";
+import { isLinkPreviewBot } from "@/lib/redirect/link-preview-bot";
 import { getSupabase } from "@/lib/supabase/service";
 
 export const runtime = "nodejs";
@@ -40,28 +41,34 @@ export async function GET(
   const userAgent = req.headers.get("user-agent");
   const referer = req.headers.get("referer");
 
-  // Fire-and-forget click insert (don't block redirect)
-  void getSupabase()
-    .from("clicks")
-    .insert({
-      event_id: lookup.eventId,
-      version_id: lookup.versionId,
-      ip: ip === "unknown" ? null : ip,
-      user_agent: userAgent,
-      referer,
-    })
-    .then(({ error }: { error: { message?: string } | null }) => {
-      if (error) {
-        console.error(
-          JSON.stringify({
-            level: "error",
-            msg: "click insert failed",
-            slug,
-            err: error.message,
-          })
-        );
-      }
-    });
+  // Skip count pour les bots de link-preview (Meta/WhatsApp/Twitter/etc.)
+  // qui hit l'URL pour générer la card preview sans vraie navigation
+  // utilisateur. On répond quand même 302 — sinon la preview ne se
+  // génère pas chez le destinataire. Voir lib/redirect/link-preview-bot.
+  if (!isLinkPreviewBot(userAgent)) {
+    // Fire-and-forget click insert (don't block redirect)
+    void getSupabase()
+      .from("clicks")
+      .insert({
+        event_id: lookup.eventId,
+        version_id: lookup.versionId,
+        ip: ip === "unknown" ? null : ip,
+        user_agent: userAgent,
+        referer,
+      })
+      .then(({ error }: { error: { message?: string } | null }) => {
+        if (error) {
+          console.error(
+            JSON.stringify({
+              level: "error",
+              msg: "click insert failed",
+              slug,
+              err: error.message,
+            })
+          );
+        }
+      });
+  }
 
   return NextResponse.redirect(lookup.destinationUrl, { status: 302 });
 }
