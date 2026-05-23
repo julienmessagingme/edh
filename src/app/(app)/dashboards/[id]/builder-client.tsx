@@ -216,17 +216,20 @@ export function BuilderClient({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // En mode pie, on charge une palette filtrée aux events porteurs
-      // de texte (text_label non vide) — seuls candidats à une viz de
-      // répartition par valeur. On commence par fetcher le dashboard
-      // pour connaître son `type`, puis on lance la palette adaptée.
-      // Pour éviter une double-requête séquentielle, on tente d'abord
-      // avec textOnly=true SI on est sur /campaigns/[id] (le mode pie
-      // n'y existe pas) la valeur est ignorée. Plus simple : on fetch
-      // la version "complète" et on filtre côté client si pie. Mais ça
-      // exposerait des events inutiles dans la palette d'un pie. Donc
-      // on fait la séquence : 1) dashboard, 2) palette + campaigns en parallèle.
-      const dRes = await fetch(`/api/dashboards/${dashboardId}`);
+      // On charge toujours la palette COMPLÈTE (sans `textOnly=true`).
+      // Raison : `palette` est utilisée par `resolveRef` pour afficher
+      // les labels des étapes DÉJÀ persistées. Si on la filtrait côté
+      // serveur (events porteurs uniquement) en mode pie, les refs
+      // existantes pointant vers des events non-porteurs ressortiraient
+      // en "(indisponible)" alors qu'elles ont juste un label parfaitement
+      // valide. Le filtre pie est donc appliqué côté client dans
+      // `displayedPalette` (qui sert uniquement à l'affichage palette
+      // sidebar + dropdown "+ Ajouter").
+      const [dRes, pRes, cRes] = await Promise.all([
+        fetch(`/api/dashboards/${dashboardId}`),
+        fetch(`/api/dashboards/palette`),
+        fetch(`/api/campaigns`),
+      ]);
       if (dRes.status === 404) {
         toast.error("Tableau introuvable");
         router.replace("/dashboards");
@@ -234,15 +237,6 @@ export function BuilderClient({
       }
       if (!dRes.ok) throw new Error("HTTP");
       const dJson = (await dRes.json()) as { dashboard: DashboardWithSteps };
-      const isPie = dJson.dashboard.type === "pie";
-      const paletteUrl = isPie
-        ? `/api/dashboards/palette?textOnly=true`
-        : `/api/dashboards/palette`;
-
-      const [pRes, cRes] = await Promise.all([
-        fetch(paletteUrl),
-        fetch(`/api/campaigns`),
-      ]);
       if (!pRes.ok) throw new Error("HTTP");
       const pJson = (await pRes.json()) as Palette;
       setDashboard(dJson.dashboard);
@@ -609,18 +603,37 @@ export function BuilderClient({
 
   const stepIds = dashboard.steps.map((s) => s.id);
 
-  // Palette filtrée par la campagne courante. La palette complète (`palette`)
-  // reste utilisée par `resolveRef` et `paletteItemFor` pour résoudre les
-  // refs déjà présentes dans les étapes ; on filtre seulement ce qu'on
-  // EXPOSE comme briques à glisser/ajouter.
-  const displayedPalette: Palette = campaignKeySet
-    ? {
-        mmEvents: palette.mmEvents.filter((p) => campaignKeySet.has(p.ref_id)),
-        redirectEvents: palette.redirectEvents.filter((p) =>
-          campaignKeySet.has(p.ref_id)
-        ),
-      }
-    : palette;
+  // Palette filtrée pour l'affichage uniquement (sidebar + AddRefMenu).
+  // La palette complète `palette` reste utilisée par `resolveRef` et
+  // `paletteItemFor` pour résoudre les refs déjà présentes dans les
+  // étapes — sinon un event "Etape 1" non porteur de texte serait
+  // marqué "(indisponible)" dans un pie chart juste parce que la palette
+  // d'affichage est filtrée.
+  //
+  // 2 filtres successifs appliqués SEULEMENT à `displayedPalette` :
+  //   1. Mode pie → garder uniquement les events porteurs (text_label
+  //      non vide) ; URLs exclues (pas de valeur portée côté redirect).
+  //   2. Filtre campagne (campaignKeySet) → restreindre aux briques de
+  //      la campagne courante.
+  let displayedPalette: Palette = palette;
+  if (dashboard.type === "pie") {
+    displayedPalette = {
+      mmEvents: displayedPalette.mmEvents.filter(
+        (p) => p.has_text_value === true
+      ),
+      redirectEvents: [],
+    };
+  }
+  if (campaignKeySet) {
+    displayedPalette = {
+      mmEvents: displayedPalette.mmEvents.filter((p) =>
+        campaignKeySet.has(p.ref_id)
+      ),
+      redirectEvents: displayedPalette.redirectEvents.filter((p) =>
+        campaignKeySet.has(p.ref_id)
+      ),
+    };
+  }
 
   return (
     <DndContext
