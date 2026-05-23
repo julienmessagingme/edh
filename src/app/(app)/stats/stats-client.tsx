@@ -11,6 +11,8 @@ import { RedirectAccordion } from "./redirect-accordion";
 import { SubNavStats } from "../sub-nav-stats";
 import { useScope } from "../scope-context";
 
+import type { MetaCostBreakdownItem } from "@/lib/dashboards/types";
+
 interface MmEventListItem {
   school_slug: string;
   school_name: string;
@@ -18,6 +20,9 @@ interface MmEventListItem {
   name: string;
   description: string | null;
   count: number;
+  /** Renseigné uniquement pour les events porteurs (text_label non vide). */
+  meta_cost_eur?: number;
+  meta_breakdown?: MetaCostBreakdownItem[];
 }
 
 interface RedirectListItem {

@@ -14,6 +14,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { MetaCostButton } from "@/components/meta-cost-breakdown";
+import type { MetaCostBreakdownItem } from "@/lib/dashboards/types";
 
 interface DailyPoint {
   day: string;
@@ -32,6 +34,8 @@ export function EventAccordion({
     event_ns: string;
     name: string;
     count: number;
+    meta_cost_eur?: number;
+    meta_breakdown?: MetaCostBreakdownItem[];
   };
   from: string;
   to: string;
@@ -90,9 +94,23 @@ export function EventAccordion({
             )}
             <span className="font-medium truncate">{ev.name}</span>
           </div>
-          <span className="text-zinc-500 text-sm shrink-0">
-            {ev.count} occurrence{ev.count !== 1 ? "s" : ""}
-          </span>
+          <div className="flex items-center gap-3 shrink-0 text-sm">
+            <span className="text-zinc-500">
+              {ev.count} occurrence{ev.count !== 1 ? "s" : ""}
+            </span>
+            {ev.meta_cost_eur != null && ev.meta_cost_eur > 0 && (
+              // Stop propagation pour que le clic ouvre la modale plutôt
+              // que de toggle l'accordéon. Le bouton lui-même gère son
+              // état (ne déclenche pas onClick du parent grâce au stop).
+              <span onClick={(e) => e.stopPropagation()}>
+                <MetaCostButton
+                  amountEur={ev.meta_cost_eur}
+                  breakdown={ev.meta_breakdown}
+                  title={`Coût Meta — ${ev.name}`}
+                />
+              </span>
+            )}
+          </div>
         </div>
       </AccordionTrigger>
       <AccordionContent className="px-4 pb-4">

@@ -43,6 +43,17 @@ export interface DashboardWithSteps extends Dashboard {
   steps: DashboardStep[];
 }
 
+/** Breakdown du coût Meta par pays. Sérialisable JSON pour transit API
+ *  (camelCase → snake_case n'est pas appliqué — on garde le format de la
+ *  lib `meta-pricing` tel quel pour ne pas avoir à mapper). */
+export interface MetaCostBreakdownItem {
+  iso: string;
+  name: string;
+  count: number;
+  rate_eur: number;
+  total_eur: number;
+}
+
 export interface ComputedRef {
   step_type: StepType;
   ref_id: string;
@@ -57,6 +68,10 @@ export interface ComputedRef {
    *  uniquement pour les mm_event dont `text_label` est non vide (donc
    *  porteurs d'un numéro de tel ou autre valeur scalaire). NULL sinon. */
   meta_cost_eur?: number | null;
+  /** Détail par pays (trié par total décroissant). Renseigné en même
+   *  temps que `meta_cost_eur`. Permet d'afficher la modale de détail
+   *  côté UI sans refaire le calcul. */
+  meta_breakdown?: MetaCostBreakdownItem[];
 }
 
 export interface ComputedStep {
@@ -72,6 +87,9 @@ export interface ComputedStep {
    *  NULL si aucune ref de l'étape n'est porteur — on n'affiche pas la
    *  colonne « Coût Meta » dans la table dans ce cas. */
   meta_cost_eur?: number | null;
+  /** Breakdown fusionné des refs (par pays, sommé). NULL si pas de
+   *  coût Meta sur l'étape. */
+  meta_breakdown?: MetaCostBreakdownItem[];
 }
 
 export interface ComputedDashboardData {

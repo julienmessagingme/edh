@@ -176,4 +176,46 @@ export function metaMarketingCostSumEur(phones: string[]): number {
   return phones.reduce((acc, p) => acc + metaMarketingCostEur(p), 0);
 }
 
+/** Une ligne du breakdown coût Meta : un pays + nb d'envois + tarif unitaire
+ *  + total. Affichée dans la modale de détail accessible au clic sur la
+ *  cellule « Coût Meta » d'un funnel ou d'un event Stats. */
+export interface MetaCostByCountry {
+  iso: string;
+  name: string;
+  count: number;
+  rateEur: number;
+  totalEur: number;
+}
+
+/**
+ * Regroupe une liste de numéros par pays et calcule le coût total par
+ * pays. Trié par totalEur décroissant (le pays le plus coûteux en haut).
+ *
+ * Le fallback (indicatif inconnu) est agrégé sous une seule ligne
+ * « Autre / non reconnu » pour ne pas polluer le tableau.
+ */
+export function groupMetaCostsByCountry(phones: string[]): MetaCostByCountry[] {
+  const groups = new Map<
+    string,
+    { iso: string; name: string; rateEur: number; count: number }
+  >();
+  for (const p of phones) {
+    if (!p) continue;
+    const country = extractCountry(p) ?? FALLBACK;
+    const key = country.iso;
+    const g = groups.get(key);
+    if (g) g.count++;
+    else
+      groups.set(key, {
+        iso: country.iso,
+        name: country.name,
+        rateEur: country.marketingEur,
+        count: 1,
+      });
+  }
+  return Array.from(groups.values())
+    .map((g) => ({ ...g, totalEur: g.count * g.rateEur }))
+    .sort((a, b) => b.totalEur - a.totalEur);
+}
+
 export const META_FALLBACK = FALLBACK;

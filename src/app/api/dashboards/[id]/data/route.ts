@@ -4,7 +4,8 @@ import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 import { resolveDateRange } from "@/lib/dashboards/date-range";
 import { getSchoolBySlug, isEdhScope } from "@/lib/schools";
-import { metaMarketingCostEur } from "@/lib/meta-pricing";
+import { groupMetaCostsByCountry } from "@/lib/meta-pricing";
+import type { MetaCostBreakdownItem } from "@/lib/dashboards/types";
 import type {
   ComputedRef,
   ComputedStep,
@@ -227,6 +228,7 @@ export async function GET(
 
       let count: number;
       let metaCostEur: number | null;
+      let metaBreakdown: MetaCostBreakdownItem[] | undefined;
       if (isPhoneCarrier) {
         // Event porteur (text_label non vide) → on fetch les text_value
         // pour calculer le coût Meta marketing par indicatif. Limite à
@@ -246,11 +248,18 @@ export async function GET(
         } else {
           const rows = (occRows ?? []) as { text_value: string | null }[];
           count = rows.length;
-          metaCostEur = rows.reduce(
-            (acc, r) =>
-              acc + (r.text_value ? metaMarketingCostEur(r.text_value) : 0),
-            0
-          );
+          const phones = rows
+            .map((r) => r.text_value ?? "")
+            .filter((p) => p.length > 0);
+          const breakdown = groupMetaCostsByCountry(phones);
+          metaBreakdown = breakdown.map((b) => ({
+            iso: b.iso,
+            name: b.name,
+            count: b.count,
+            rate_eur: b.rateEur,
+            total_eur: b.totalEur,
+          }));
+          metaCostEur = metaBreakdown.reduce((s, b) => s + b.total_eur, 0);
         }
       } else {
         // Event "compteur" classique : count(*) suffit.
@@ -272,6 +281,7 @@ export async function GET(
         count,
         available: true,
         meta_cost_eur: metaCostEur,
+        ...(metaBreakdown ? { meta_breakdown: metaBreakdown } : {}),
         ...(isEdh
           ? {
               school_slug: refSchool,
@@ -336,6 +346,27 @@ export async function GET(
         carriers.length > 0
           ? carriers.reduce((acc, r) => acc + (r.meta_cost_eur ?? 0), 0)
           : null;
+      // Fusion des breakdown des refs porteurs en un seul breakdown au
+      // niveau du step. Si deux refs ramènent du même pays, on additionne
+      // count + total et on garde le rate (cohérent par hypothèse).
+      let metaBreakdown: MetaCostBreakdownItem[] | undefined;
+      if (carriers.length > 0) {
+        const merged = new Map<string, MetaCostBreakdownItem>();
+        for (const r of carriers) {
+          for (const b of r.meta_breakdown ?? []) {
+            const existing = merged.get(b.iso);
+            if (existing) {
+              existing.count += b.count;
+              existing.total_eur += b.total_eur;
+            } else {
+              merged.set(b.iso, { ...b });
+            }
+          }
+        }
+        metaBreakdown = Array.from(merged.values()).sort(
+          (a, b) => b.total_eur - a.total_eur
+        );
+      }
       return {
         position: s.position,
         label: s.label && s.label.trim() ? s.label : fallbackLabel,
@@ -343,6 +374,7 @@ export async function GET(
         available: anyAvailable && computedRefs.length > 0,
         refs: computedRefs,
         meta_cost_eur: metaCostEur,
+        ...(metaBreakdown ? { meta_breakdown: metaBreakdown } : {}),
       };
     })
   );

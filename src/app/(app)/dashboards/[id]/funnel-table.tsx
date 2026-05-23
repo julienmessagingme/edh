@@ -1,18 +1,37 @@
 "use client";
 
-import type { ComputedStep } from "@/lib/dashboards/types";
+import type {
+  ComputedStep,
+  MetaCostBreakdownItem,
+} from "@/lib/dashboards/types";
 import { compactStepLabel } from "@/lib/dashboards/types";
+import { MetaCostButton } from "@/components/meta-cost-breakdown";
 
 function pct(num: number, denom: number): string {
   if (denom === 0) return "—";
   return `${((num / denom) * 100).toFixed(1)}%`;
 }
 
-/** Format EUR sans décimale pour > 100 €, 2 décimales en dessous. */
-function fmtEur(v: number): string {
-  return v >= 100
-    ? `${v.toFixed(0)} €`
-    : `${v.toFixed(2).replace(".", ",")} €`;
+/** Fusionne plusieurs breakdowns en un seul (utilisé pour la ligne
+ *  « Total coût Meta » qui agrège tous les steps). */
+function mergeBreakdowns(
+  steps: ComputedStep[]
+): MetaCostBreakdownItem[] {
+  const merged = new Map<string, MetaCostBreakdownItem>();
+  for (const s of steps) {
+    for (const b of s.meta_breakdown ?? []) {
+      const existing = merged.get(b.iso);
+      if (existing) {
+        existing.count += b.count;
+        existing.total_eur += b.total_eur;
+      } else {
+        merged.set(b.iso, { ...b });
+      }
+    }
+  }
+  return Array.from(merged.values()).sort(
+    (a, b) => b.total_eur - a.total_eur
+  );
 }
 
 export function FunnelTable({ steps }: { steps: ComputedStep[] }) {
@@ -26,6 +45,7 @@ export function FunnelTable({ steps }: { steps: ComputedStep[] }) {
   const totalMetaCost = hasMetaCost
     ? steps.reduce((acc, s) => acc + (s.meta_cost_eur ?? 0), 0)
     : 0;
+  const totalBreakdown = hasMetaCost ? mergeBreakdowns(steps) : [];
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -95,7 +115,15 @@ export function FunnelTable({ steps }: { steps: ComputedStep[] }) {
                 </td>
                 {hasMetaCost && (
                   <td className="py-2 pr-4 text-right tabular-nums text-zinc-600">
-                    {s.meta_cost_eur != null ? fmtEur(s.meta_cost_eur) : "—"}
+                    {s.meta_cost_eur != null && s.meta_cost_eur > 0 ? (
+                      <MetaCostButton
+                        amountEur={s.meta_cost_eur}
+                        breakdown={s.meta_breakdown}
+                        title={`Coût Meta — étape ${i + 1} (${compactStepLabel(s)})`}
+                      />
+                    ) : (
+                      "—"
+                    )}
                   </td>
                 )}
               </tr>
@@ -108,7 +136,11 @@ export function FunnelTable({ steps }: { steps: ComputedStep[] }) {
               <td className="py-2 pr-4" />
               <td className="py-2 pr-4" />
               <td className="py-2 pr-4 text-right tabular-nums">
-                {fmtEur(totalMetaCost)}
+                <MetaCostButton
+                  amountEur={totalMetaCost}
+                  breakdown={totalBreakdown}
+                  title="Coût Meta — total du funnel"
+                />
               </td>
             </tr>
           )}

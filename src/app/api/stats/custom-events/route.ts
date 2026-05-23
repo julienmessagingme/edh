@@ -5,6 +5,8 @@ import { getCurrentSchoolSlugChecked } from "@/lib/schools/context";
 import { requireUser } from "@/lib/auth/require-user";
 import { getSchoolBySlug, isEdhScope, EDH_SCHOOL_SLUGS } from "@/lib/schools";
 import { formatInTimeZone } from "date-fns-tz";
+import { groupMetaCostsByCountry } from "@/lib/meta-pricing";
+import type { MetaCostBreakdownItem } from "@/lib/dashboards/types";
 
 export const runtime = "nodejs";
 
@@ -39,7 +41,7 @@ export async function GET(req: Request) {
   // mm_events avec leurs propres school_slug (ex: keolis-auxerre).
   let q = sb
     .from("mm_events")
-    .select("school_slug, event_ns, name, description")
+    .select("school_slug, event_ns, name, description, text_label")
     .order("school_slug")
     .order("name");
   if (isEdh) {
@@ -67,6 +69,52 @@ export async function GET(req: Request) {
 
   const counts = await Promise.all(
     (events ?? []).map(async (ev) => {
+      const isPhoneCarrier = ((ev as { text_label?: string | null }).text_label ?? "").trim().length > 0;
+      const school = getSchoolBySlug(ev.school_slug);
+      const base = {
+        school_slug: ev.school_slug,
+        school_name: school?.name ?? ev.school_slug,
+        event_ns: ev.event_ns,
+        name: ev.name,
+        description: ev.description,
+      };
+
+      if (isPhoneCarrier) {
+        // Event porteur (text_label non vide) → on récupère les text_value
+        // pour calculer count + coût Meta + breakdown par pays en une seule
+        // requête. Limite 10k (au-delà sous-évalué — cf. todo perf).
+        const { data: occRows } = await sb
+          .from("mm_occurrences")
+          .select("text_value")
+          .eq("school_slug", ev.school_slug)
+          .eq("event_ns", ev.event_ns)
+          .gte("occurred_at", fromUtc)
+          .lte("occurred_at", toUtc)
+          .limit(10000);
+        const rows = (occRows ?? []) as { text_value: string | null }[];
+        const phones = rows
+          .map((r) => r.text_value ?? "")
+          .filter((p) => p.length > 0);
+        const breakdown = groupMetaCostsByCountry(phones);
+        const metaBreakdown: MetaCostBreakdownItem[] = breakdown.map((b) => ({
+          iso: b.iso,
+          name: b.name,
+          count: b.count,
+          rate_eur: b.rateEur,
+          total_eur: b.totalEur,
+        }));
+        const metaCostEur = metaBreakdown.reduce(
+          (s, b) => s + b.total_eur,
+          0
+        );
+        return {
+          ...base,
+          count: rows.length,
+          meta_cost_eur: metaCostEur,
+          meta_breakdown: metaBreakdown,
+        };
+      }
+
       const { count } = await sb
         .from("mm_occurrences")
         .select("*", { count: "exact", head: true })
@@ -74,15 +122,7 @@ export async function GET(req: Request) {
         .eq("event_ns", ev.event_ns)
         .gte("occurred_at", fromUtc)
         .lte("occurred_at", toUtc);
-      const school = getSchoolBySlug(ev.school_slug);
-      return {
-        school_slug: ev.school_slug,
-        school_name: school?.name ?? ev.school_slug,
-        event_ns: ev.event_ns,
-        name: ev.name,
-        description: ev.description,
-        count: count ?? 0,
-      };
+      return { ...base, count: count ?? 0 };
     })
   );
 
