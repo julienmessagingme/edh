@@ -4,11 +4,11 @@
 
 ## En cours
 
-(rien — Phase 22 Pie chart livrée 2026-05-21. Prod sur https://edh.messagingme.app)
+(rien — Phase 25 Campagnes structurées livrée 2026-05-23. Prod sur https://edh.messagingme.app)
 
-## À appliquer avant déploiement de la Phase 22
+## À appliquer avant déploiement de la Phase 25
 
-- **Migration 011_dashboard_type_pie.sql** dans Supabase SQL Editor avant de pull/redeploy. Étend `CHECK type IN ('funnel') → ('funnel','pie')`. Sans ça, l'INSERT d'un nouveau dashboard avec `type='pie'` rebondit avec une violation CHECK.
+- **Migration 012_campaign_ref_role.sql** dans Supabase SQL Editor avant de pull/redeploy. Ajoute `campaign_refs.role` + 2 index uniques partiels (un seul launch et un seul failed par campagne). Les campagnes existantes basculent en `role='body'` automatiquement via le DEFAULT.
 
 ## Seed data temporaire en place — à cleaner mercredi/jeudi 2026-05-22 ou 23
 

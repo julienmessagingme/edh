@@ -30,7 +30,7 @@ export async function GET(req: Request) {
   // `school_slug` + `school_name` pour l'affichage (chip).
   let mmQuery = sb
     .from("mm_events")
-    .select("school_slug, event_ns, name")
+    .select("school_slug, event_ns, name, text_label")
     .order("school_slug")
     .order("name");
   if (textOnly) {
@@ -65,7 +65,12 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: redirectsRes.error.message }, { status: 500 });
 
   const mmEvents: PaletteItem[] = (
-    (mmRes.data ?? []) as { school_slug: string; event_ns: string; name: string }[]
+    (mmRes.data ?? []) as {
+      school_slug: string;
+      event_ns: string;
+      name: string;
+      text_label: string | null;
+    }[]
   ).map((r) => {
     const item: PaletteItem = {
       step_type: "mm_event",
@@ -74,6 +79,7 @@ export async function GET(req: Request) {
       // qui s'appellerait pareil dans deux écoles.
       ref_id: isEdh ? `${r.school_slug}:${r.event_ns}` : r.event_ns,
       label: r.name,
+      has_text_value: (r.text_label ?? "").trim().length > 0,
     };
     if (isEdh) {
       item.school_slug = r.school_slug;

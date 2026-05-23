@@ -13,7 +13,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import type { Palette, PaletteItem } from "@/lib/dashboards/types";
-import type { CampaignWithRefs } from "@/lib/campaigns/types";
+import type {
+  CampaignRef,
+  CampaignWithRefs,
+  CampaignRefRole,
+} from "@/lib/campaigns/types";
 import { paletteKeyOf } from "@/lib/campaigns/utils";
 
 interface Props {
@@ -22,11 +26,20 @@ interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   /** Appelé après une création réussie (mode="new"), avec l'id de la
-   *  nouvelle campagne. Permet au parent de rediriger vers
-   *  `/campaigns/[id]` pour éditer le tableau lié. */
+   *  nouvelle campagne. */
   onCreated?: (id: string) => void;
 }
 
+/**
+ * Dialog 3-sections (Phase 25+) :
+ *   1) Event de lancement (optionnel, 1 seul) — events porteurs de tel
+ *      uniquement. Sert au calcul du coût Meta.
+ *   2) Briques du funnel (events + URLs) — drag-and-drop dans le builder.
+ *   3) Event failed WhatsApp (optionnel, 1 seul) — soustrait du launch.
+ *
+ * Un même event ne peut être assigné qu'à UN seul rôle : on exclut donc
+ * les keys déjà utilisées ailleurs dans les choix proposés.
+ */
 export function CampaignEditorDialog({
   mode,
   campaignId,
@@ -37,14 +50,19 @@ export function CampaignEditorDialog({
   const [name, setName] = useState("");
   const [isShared, setIsShared] = useState(false);
   const [palette, setPalette] = useState<Palette | null>(null);
-  /** Map<paletteKey, PaletteItem> : porte tout le contexte nécessaire
-   *  au moment du save (step_type + event_school_slug). */
-  const [selected, setSelected] = useState<Map<string, PaletteItem>>(new Map());
-  const [search, setSearch] = useState("");
+
+  /** paletteKey de l'event launch, ou null. */
+  const [launchKey, setLaunchKey] = useState<string | null>(null);
+  /** Set de paletteKeys des briques body. */
+  const [bodyKeys, setBodyKeys] = useState<Set<string>>(new Set());
+  /** paletteKey de l'event failed, ou null. */
+  const [failedKey, setFailedKey] = useState<string | null>(null);
+
+  const [bodySearch, setBodySearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Load palette + campaign (si edit) au montage
+  // Charge palette + (si edit) campaign + dispatch refs selon role.
   useEffect(() => {
     let alive = true;
     setLoading(true);
@@ -65,20 +83,27 @@ export function CampaignEditorDialog({
           if (!alive) return;
           setName(campaign.name);
           setIsShared(campaign.is_shared);
-          // Rebuild Map<paletteKey, PaletteItem> à partir des refs + palette
-          const byKey = new Map<string, PaletteItem>();
-          const allItems = [...pJson.mmEvents, ...pJson.redirectEvents];
-          const itemByKey = new Map(allItems.map((i) => [i.ref_id, i]));
-          for (const r of campaign.refs) {
+
+          // Dispatch des refs par rôle. paletteKeyOf retombe sur le bon
+          // composite key qu'on utilise côté palette.
+          let l: string | null = null;
+          let f: string | null = null;
+          const b = new Set<string>();
+          for (const r of campaign.refs as CampaignRef[]) {
             const key = paletteKeyOf(r);
-            const item = itemByKey.get(key);
-            if (item) byKey.set(key, item);
+            if (r.role === "launch") l = key;
+            else if (r.role === "failed") f = key;
+            else b.add(key);
           }
-          setSelected(byKey);
+          setLaunchKey(l);
+          setBodyKeys(b);
+          setFailedKey(f);
         } else {
           setName("");
           setIsShared(false);
-          setSelected(new Map());
+          setLaunchKey(null);
+          setBodyKeys(new Set());
+          setFailedKey(null);
         }
       } catch {
         toast.error("Erreur de chargement");
@@ -91,17 +116,49 @@ export function CampaignEditorDialog({
     };
   }, [mode, campaignId]);
 
-  function toggleRef(item: PaletteItem) {
-    setSelected((prev) => {
-      const next = new Map(prev);
-      if (next.has(item.ref_id)) next.delete(item.ref_id);
-      else next.set(item.ref_id, item);
-      return next;
-    });
-  }
+  // --- Sélections dérivées (filtrage par rôle) ---
 
-  function filterItems(list: PaletteItem[]): PaletteItem[] {
-    const q = search.trim().toLowerCase();
+  /** Index palette par ref_id pour reconstruire les items au save. */
+  const itemByKey = useMemo(() => {
+    if (!palette) return new Map<string, PaletteItem>();
+    return new Map(
+      [...palette.mmEvents, ...palette.redirectEvents].map((i) => [i.ref_id, i])
+    );
+  }, [palette]);
+
+  // Section 1 (launch) : events MM porteurs uniquement, hors body / failed.
+  const launchCandidates = useMemo(() => {
+    if (!palette) return [];
+    return palette.mmEvents.filter(
+      (i) =>
+        i.has_text_value === true &&
+        i.ref_id !== failedKey &&
+        !bodyKeys.has(i.ref_id)
+    );
+  }, [palette, failedKey, bodyKeys]);
+
+  // Section 3 (failed) : tous les events MM, hors body / launch.
+  const failedCandidates = useMemo(() => {
+    if (!palette) return [];
+    return palette.mmEvents.filter(
+      (i) => i.ref_id !== launchKey && !bodyKeys.has(i.ref_id)
+    );
+  }, [palette, launchKey, bodyKeys]);
+
+  // Section 2 (body) : events MM + URLs, hors launch / failed.
+  const bodyMm = useMemo(() => {
+    if (!palette) return [];
+    return palette.mmEvents.filter(
+      (i) => i.ref_id !== launchKey && i.ref_id !== failedKey
+    );
+  }, [palette, launchKey, failedKey]);
+  const bodyUrls = useMemo(() => {
+    if (!palette) return [];
+    return palette.redirectEvents;
+  }, [palette]);
+
+  function filterBySearch(list: PaletteItem[]): PaletteItem[] {
+    const q = bodySearch.trim().toLowerCase();
     if (!q) return list;
     return list.filter(
       (i) =>
@@ -109,45 +166,60 @@ export function CampaignEditorDialog({
         (i.school_name ?? "").toLowerCase().includes(q)
     );
   }
+  const filteredBodyMm = useMemo(
+    () => filterBySearch(bodyMm),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bodyMm, bodySearch]
+  );
+  const filteredBodyUrls = useMemo(
+    () => filterBySearch(bodyUrls),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bodyUrls, bodySearch]
+  );
 
-  const filteredMm = useMemo(
-    () => (palette ? filterItems(palette.mmEvents) : []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [palette, search]
-  );
-  const filteredUrls = useMemo(
-    () => (palette ? filterItems(palette.redirectEvents) : []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [palette, search]
-  );
+  function toggleBody(item: PaletteItem) {
+    setBodyKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(item.ref_id)) next.delete(item.ref_id);
+      else next.add(item.ref_id);
+      return next;
+    });
+  }
+
+  // --- Save ---
+
+  function makeRefPayload(key: string, role: CampaignRefRole) {
+    const item = itemByKey.get(key);
+    if (!item) return null;
+    if (item.step_type === "mm_event") {
+      const eventNs = item.school_slug
+        ? item.ref_id.slice(item.school_slug.length + 1)
+        : item.ref_id;
+      return {
+        step_type: "mm_event" as const,
+        event_ns: eventNs,
+        ...(item.school_slug ? { event_school_slug: item.school_slug } : {}),
+        role,
+      };
+    }
+    return {
+      step_type: "url_click" as const,
+      redirect_event_id: item.ref_id,
+      role: "body" as const, // url_click ne peut être que body (cf. API zod)
+    };
+  }
 
   async function save() {
     const trimmed = name.trim();
     if (!trimmed) return;
     setSaving(true);
     try {
-      const refs = Array.from(selected.values()).map((p) => {
-        if (p.step_type === "mm_event") {
-          // En EDH ref_id = "<school>:<event_ns>" → on split.
-          const eventNs = p.school_slug
-            ? p.ref_id.slice(p.school_slug.length + 1)
-            : p.ref_id;
-          return {
-            step_type: "mm_event" as const,
-            event_ns: eventNs,
-            ...(p.school_slug ? { event_school_slug: p.school_slug } : {}),
-          };
-        }
-        return {
-          step_type: "url_click" as const,
-          redirect_event_id: p.ref_id,
-        };
-      });
+      const refs = [
+        ...(launchKey ? [makeRefPayload(launchKey, "launch")] : []),
+        ...Array.from(bodyKeys).map((k) => makeRefPayload(k, "body")),
+        ...(failedKey ? [makeRefPayload(failedKey, "failed")] : []),
+      ].filter(Boolean);
 
-      // Le dashboard lié à une campagne est toujours créé en type 'funnel'
-      // côté API (cf. POST /api/campaigns). Pas de radio dans cette dialog
-      // — la décision a été prise de réserver le pie chart à Mes tableaux
-      // pour garder l'usage des campagnes simple (suivi de conversion).
       const body = JSON.stringify({
         name: trimmed,
         is_shared: isShared,
@@ -181,11 +253,10 @@ export function CampaignEditorDialog({
     }
   }
 
+  // --- Render ---
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* `max-h-[90vh] flex flex-col` : la dialog ne dépasse jamais
-          l'écran. Le contenu interne (refs lists) prend `flex-1 min-h-0`
-          pour absorber l'espace disponible et avoir son propre scroll. */}
       <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
         <DialogHeader className="shrink-0">
           <DialogTitle>
@@ -198,7 +269,8 @@ export function CampaignEditorDialog({
         ) : !palette ? (
           <p className="text-red-600 text-sm py-8">Erreur de chargement</p>
         ) : (
-          <div className="flex flex-col flex-1 min-h-0 space-y-4">
+          <div className="flex flex-col flex-1 min-h-0 space-y-4 overflow-y-auto pr-1">
+            {/* Bloc méta : nom + partagée */}
             <div className="space-y-2 shrink-0">
               <Label htmlFor="campaign-name">Nom</Label>
               <Input
@@ -209,7 +281,6 @@ export function CampaignEditorDialog({
                 autoFocus
               />
             </div>
-
             <div className="flex items-center gap-3 shrink-0">
               <input
                 id="campaign-shared"
@@ -222,49 +293,78 @@ export function CampaignEditorDialog({
                 Partagée avec l&apos;école
               </Label>
               <span className="text-xs text-zinc-500">
-                {isShared
-                  ? "Visible par tous les utilisateurs de l'école"
-                  : "Visible uniquement par vous"}
+                {isShared ? "Visible par tous" : "Visible uniquement par vous"}
               </span>
             </div>
 
-            <div className="flex flex-col flex-1 min-h-0 space-y-2">
-              <div className="flex items-center justify-between shrink-0">
-                <Label>
-                  Briques de la campagne ({selected.size} sélectionnée
-                  {selected.size > 1 ? "s" : ""})
-                </Label>
+            {/* Section 1 : Event de lancement */}
+            <SectionCard
+              step={1}
+              title="Event de lancement"
+              hint="Optionnel. Event qui porte le numéro de tel des destinataires (text_label défini dans Smartlink). Sert au calcul du coût Meta."
+            >
+              <EventSelect
+                value={launchKey}
+                onChange={setLaunchKey}
+                items={launchCandidates}
+                placeholder="— Aucun event de lancement —"
+                emptyMessage="Aucun event porteur de tel disponible. Configurez `text_label` sur un event Smartlink."
+              />
+            </SectionCard>
+
+            {/* Section 2 : Briques du funnel */}
+            <SectionCard
+              step={2}
+              title={`Briques du funnel (${bodyKeys.size} sélectionnée${
+                bodyKeys.size > 1 ? "s" : ""
+              })`}
+              hint="Events MM et URLs trackées qu'on pourra glisser-déposer en étapes dans le builder."
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-zinc-500">
+                  Multi-sélection. L&apos;event de lancement et le failed sont exclus.
+                </span>
                 <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  value={bodySearch}
+                  onChange={(e) => setBodySearch(e.target.value)}
                   placeholder="Rechercher…"
                   className="w-48 h-8 text-sm"
                 />
               </div>
-
-              {/* `flex-1 min-h-0` : la zone refs prend l'espace restant
-                  dans la dialog. Plus de `h-[440px]` fixe qui débordait
-                  sur les petits écrans (laptop 13" + barre URL ≈ 700px
-                  utiles → dialog dépassait sans scroll). */}
-              <div className="border rounded flex flex-1 min-h-0">
+              <div className="border rounded flex h-[280px]">
                 <RefList
-                  title={`Custom events MM (${filteredMm.length})`}
-                  items={filteredMm}
-                  selected={selected}
-                  onToggle={toggleRef}
-                  searchActive={search.trim().length > 0}
+                  title={`Custom events MM (${filteredBodyMm.length})`}
+                  items={filteredBodyMm}
+                  selectedKeys={bodyKeys}
+                  onToggle={toggleBody}
+                  searchActive={bodySearch.trim().length > 0}
                   className="flex-1 border-r"
                 />
                 <RefList
-                  title={`Clics URL (${filteredUrls.length})`}
-                  items={filteredUrls}
-                  selected={selected}
-                  onToggle={toggleRef}
-                  searchActive={search.trim().length > 0}
+                  title={`Clics URL (${filteredBodyUrls.length})`}
+                  items={filteredBodyUrls}
+                  selectedKeys={bodyKeys}
+                  onToggle={toggleBody}
+                  searchActive={bodySearch.trim().length > 0}
                   className="flex-1"
                 />
               </div>
-            </div>
+            </SectionCard>
+
+            {/* Section 3 : Event failed WhatsApp */}
+            <SectionCard
+              step={3}
+              title="Event failed WhatsApp"
+              hint="Optionnel. Count soustrait du lancement pour calculer les envois réussis et ajuster le coût Meta."
+            >
+              <EventSelect
+                value={failedKey}
+                onChange={setFailedKey}
+                items={failedCandidates}
+                placeholder="— Aucun event failed —"
+                emptyMessage="Aucun event MM disponible."
+              />
+            </SectionCard>
           </div>
         )}
 
@@ -288,29 +388,104 @@ export function CampaignEditorDialog({
   );
 }
 
+/** Carte numérotée pour une section de la dialog. */
+function SectionCard({
+  step,
+  title,
+  hint,
+  children,
+}: {
+  step: number;
+  title: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="border rounded-lg p-3 space-y-2 shrink-0 bg-white">
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-zinc-900 text-white">
+          {step}
+        </span>
+        <h4 className="text-sm font-semibold">{title}</h4>
+      </div>
+      {hint && <p className="text-xs text-zinc-500">{hint}</p>}
+      <div>{children}</div>
+    </section>
+  );
+}
+
+/** Select natif avec optgroup par école en mode EDH. Accepte une option
+ *  vide « Aucun » pour les rôles optionnels (launch / failed). */
+function EventSelect({
+  value,
+  onChange,
+  items,
+  placeholder,
+  emptyMessage,
+}: {
+  value: string | null;
+  onChange: (v: string | null) => void;
+  items: PaletteItem[];
+  placeholder: string;
+  emptyMessage: string;
+}) {
+  const isMultiSchool = items.some((i) => !!i.school_name);
+  const groups = new Map<string, PaletteItem[]>();
+  if (isMultiSchool) {
+    for (const i of items) {
+      const k = i.school_name ?? i.school_slug ?? "_";
+      const arr = groups.get(k) ?? [];
+      arr.push(i);
+      groups.set(k, arr);
+    }
+  }
+  if (items.length === 0) {
+    return (
+      <p className="text-xs text-zinc-400 italic">{emptyMessage}</p>
+    );
+  }
+  return (
+    <select
+      value={value ?? ""}
+      onChange={(e) => onChange(e.target.value || null)}
+      className="w-full text-sm border rounded px-2 py-1.5 bg-white"
+    >
+      <option value="">{placeholder}</option>
+      {isMultiSchool
+        ? Array.from(groups.entries()).map(([school, list]) => (
+            <optgroup key={school} label={school}>
+              {list.map((i) => (
+                <option key={i.ref_id} value={i.ref_id}>
+                  {i.label}
+                </option>
+              ))}
+            </optgroup>
+          ))
+        : items.map((i) => (
+            <option key={i.ref_id} value={i.ref_id}>
+              {i.label}
+            </option>
+          ))}
+    </select>
+  );
+}
+
 function RefList({
   title,
   items,
-  selected,
+  selectedKeys,
   onToggle,
   searchActive,
   className = "",
 }: {
   title: string;
   items: PaletteItem[];
-  selected: Map<string, PaletteItem>;
+  selectedKeys: Set<string>;
   onToggle: (p: PaletteItem) => void;
-  /** Si true, on étale tous les groupes (pas d'accordéon) pour que les
-   *  résultats de recherche soient tous visibles. */
   searchActive: boolean;
   className?: string;
 }) {
-  // Mode EDH : tous les items ont un school_name → on groupe par école
-  // pour rendre les 113 events digestes via des accordéons. Mode école
-  // précise : pas de chip école → on rend la liste à plat.
   const isMultiSchool = items.some((p) => !!p.school_name);
-
-  // Map<school_slug, { name, items[] }>, ordre d'apparition préservé.
   const groups = new Map<
     string,
     { name: string; items: PaletteItem[] }
@@ -333,13 +508,11 @@ function RefList({
       {items.length === 0 ? (
         <p className="px-3 py-2 text-xs text-zinc-400">Aucun</p>
       ) : isMultiSchool ? (
-        // Accordéon par école : <details> natif. Ouvert par défaut quand
-        // une recherche est active, sinon fermé (l'utilisateur déplie ce
-        // qui l'intéresse).
         <div>
           {Array.from(groups.values()).map((g) => {
-            const groupChecked = g.items.filter((p) => selected.has(p.ref_id))
-              .length;
+            const groupChecked = g.items.filter((p) =>
+              selectedKeys.has(p.ref_id)
+            ).length;
             return (
               <details
                 key={g.name}
@@ -362,7 +535,7 @@ function RefList({
                     <RefRow
                       key={p.ref_id}
                       item={p}
-                      checked={selected.has(p.ref_id)}
+                      checked={selectedKeys.has(p.ref_id)}
                       onToggle={onToggle}
                       hideSchoolChip
                     />
@@ -378,7 +551,7 @@ function RefList({
             <RefRow
               key={p.ref_id}
               item={p}
-              checked={selected.has(p.ref_id)}
+              checked={selectedKeys.has(p.ref_id)}
               onToggle={onToggle}
             />
           ))}
@@ -397,8 +570,6 @@ function RefRow({
   item: PaletteItem;
   checked: boolean;
   onToggle: (p: PaletteItem) => void;
-  /** Quand on est déjà sous un accordéon « EFAP », inutile de répéter la
-   *  chip école sur chaque ligne. */
   hideSchoolChip?: boolean;
 }) {
   return (

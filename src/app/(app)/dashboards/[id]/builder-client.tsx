@@ -53,7 +53,9 @@ import type {
   PaletteItem,
   DatePreset,
   ComputedDashboardData,
+  CampaignCostSummary,
 } from "@/lib/dashboards/types";
+import { MetaCostButton } from "@/components/meta-cost-breakdown";
 import type {
   CampaignListItem,
   CampaignWithRefs,
@@ -270,6 +272,10 @@ export function BuilderClient({
   // En mode campagne, le filtre est verrouillé sur `campaignId` et on
   // refetch aussi quand `campaignRefsVersion` bouge (signal de la page
   // parente après modif des briques).
+  //
+  // Filtrage par rôle : on ne garde QUE les refs `body` dans la palette.
+  // Les refs `launch` et `failed` servent à calculer la synthèse coût
+  // Meta, pas à être glissées en étapes (cf. Phase 25).
   useEffect(() => {
     if (!campaignFilter) {
       setCampaignKeySet(null);
@@ -282,7 +288,11 @@ export function BuilderClient({
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const { campaign } = (await r.json()) as { campaign: CampaignWithRefs };
         if (!alive) return;
-        setCampaignKeySet(new Set(campaign.refs.map(paletteKeyOf)));
+        setCampaignKeySet(
+          new Set(
+            campaign.refs.filter((r) => r.role === "body").map(paletteKeyOf)
+          )
+        );
       } catch {
         if (!alive) return;
         toast.error("Erreur de chargement de la campagne");
@@ -688,6 +698,14 @@ export function BuilderClient({
           </div>
         </div>
 
+        {/* Synthèse coût Meta de la campagne (Phase 25) : affichée si le
+            dashboard est lié à une campagne avec un launch défini.
+            Donne le coût brut, le failed, les envois réussis et le coût
+            net (cliquable → détail par pays). */}
+        {computed?.campaign_summary && (
+          <CampaignCostSummaryCard summary={computed.campaign_summary} />
+        )}
+
         <div className="grid grid-cols-[340px_minmax(0,1fr)_minmax(0,1.2fr)] gap-4">
           <aside className="bg-white border rounded-lg p-3 space-y-4 max-h-[600px] overflow-auto">
             {isCampaignMode ? (
@@ -902,6 +920,93 @@ export function BuilderClient({
         )}
       </DragOverlay>
     </DndContext>
+  );
+}
+
+/** Encadré ambre au-dessus du builder, visible uniquement pour les
+ *  dashboards liés à une campagne ayant un launch. 4 stats :
+ *    1. Envois lancés (count launch + label)
+ *    2. Failed (si event failed défini)
+ *    3. Envois réussis (launch - failed)
+ *    4. Coût net (cliquable → modale détail par pays) */
+function CampaignCostSummaryCard({
+  summary,
+}: {
+  summary: CampaignCostSummary;
+}) {
+  return (
+    <div className="bg-amber-50/40 border border-amber-200 rounded-lg p-4">
+      <div className="text-xs uppercase text-amber-800 font-semibold tracking-wide mb-3">
+        Synthèse coût Meta de la campagne
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+        <SummaryStat
+          label="Envois lancés"
+          value={summary.launch.count.toLocaleString("fr-FR")}
+          sub={summary.launch.label}
+        />
+        <SummaryStat
+          label="Failed WhatsApp"
+          value={
+            summary.failed
+              ? summary.failed.count.toLocaleString("fr-FR")
+              : "—"
+          }
+          sub={summary.failed?.label ?? "Aucun event failed configuré"}
+        />
+        <SummaryStat
+          label="Envois réussis"
+          value={summary.net_count.toLocaleString("fr-FR")}
+          sub={
+            summary.launch.count > 0
+              ? `${((summary.net_count / summary.launch.count) * 100).toFixed(1)} % du lancement`
+              : "—"
+          }
+        />
+        <SummaryStat
+          label="Coût net Meta"
+          value={
+            <MetaCostButton
+              amountEur={summary.net_cost_eur}
+              breakdown={summary.net_breakdown}
+              title="Coût net de la campagne — détail par pays"
+            />
+          }
+          sub={
+            summary.failed
+              ? `(brut ${summary.launch.cost_eur.toFixed(2).replace(".", ",")} € − failed)`
+              : "= coût brut (pas de failed)"
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
+function SummaryStat({
+  label,
+  value,
+  sub,
+}: {
+  label: string;
+  value: React.ReactNode;
+  sub?: string;
+}) {
+  return (
+    <div className="space-y-0.5">
+      <div className="text-[10px] uppercase text-zinc-500 font-semibold tracking-wide">
+        {label}
+      </div>
+      <div className="text-lg font-semibold text-zinc-900">{value}</div>
+      {sub && (
+        <div
+          className="text-[11px] text-zinc-500 truncate"
+          title={sub}
+        >
+          {sub}
+        </div>
+      )}
+    </div>
   );
 }
 

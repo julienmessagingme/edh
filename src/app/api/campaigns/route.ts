@@ -12,10 +12,15 @@ const RefSchema = z.discriminatedUnion("step_type", [
     step_type: z.literal("mm_event"),
     event_ns: z.string().min(1),
     event_school_slug: z.string().min(1).optional().nullable(),
+    role: z.enum(["launch", "body", "failed"]).optional(),
   }),
   z.object({
     step_type: z.literal("url_click"),
     redirect_event_id: z.string().uuid(),
+    // url_click ne peut pas être launch ni failed (ces 2 rôles sont des
+    // events MM avec leurs propres compteurs/text_value). On accepte donc
+    // uniquement 'body' (ou vide → défaut body).
+    role: z.literal("body").optional(),
   }),
 ]);
 
@@ -135,6 +140,7 @@ export async function POST(req: Request) {
         r.step_type === "url_click" ? r.redirect_event_id : null,
       event_school_slug:
         r.step_type === "mm_event" ? r.event_school_slug ?? null : null,
+      role: r.role ?? "body",
     }));
     const { error: refsErr } = await sb.from("campaign_refs").insert(rows);
     if (refsErr) {

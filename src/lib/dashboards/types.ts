@@ -92,10 +92,41 @@ export interface ComputedStep {
   meta_breakdown?: MetaCostBreakdownItem[];
 }
 
+/**
+ * Synthèse coût Meta au niveau d'une campagne (Phase 25+). Renseigné dans
+ * la réponse `/api/dashboards/[id]/data` uniquement si :
+ *   - le dashboard est lié à une campagne (campaign_id non NULL), ET
+ *   - la campagne a un event de lancement (role='launch') défini.
+ *
+ * - launch        : tout ce qui sort de l'event de lancement (envois bruts).
+ * - failed        : count des occurrences de l'event role='failed' s'il
+ *                   existe (sinon null).
+ * - net_count     : max(0, launch.count - failed.count).
+ * - net_cost_eur  : launch.cost_eur scaled par net_count / launch.count.
+ * - net_breakdown : breakdown du launch scaled au même ratio.
+ */
+export interface CampaignCostSummary {
+  launch: {
+    count: number;
+    cost_eur: number;
+    breakdown: MetaCostBreakdownItem[];
+    /** Label affichable de l'event de lancement (avec chip école en EDH). */
+    label: string;
+  };
+  failed: {
+    count: number;
+    label: string;
+  } | null;
+  net_count: number;
+  net_cost_eur: number;
+  net_breakdown: MetaCostBreakdownItem[];
+}
+
 export interface ComputedDashboardData {
   from: string;
   to: string;
   steps: ComputedStep[];
+  campaign_summary?: CampaignCostSummary | null;
 }
 
 /**
@@ -126,6 +157,12 @@ export interface PaletteItem {
    *  en mode école-précise, ces champs sont absents. */
   school_slug?: string;
   school_name?: string;
+  /** Vrai pour les mm_event dont `text_label` est non vide → l'event
+   *  porte une valeur scalaire (typiquement un numéro de tel). Sert à
+   *  filtrer côté UI la palette pour les sections « launch » / « failed »
+   *  de la dialog d'édition de campagne (Phase 25+). Absent pour les
+   *  url_click. */
+  has_text_value?: boolean;
 }
 
 export interface Palette {

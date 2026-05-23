@@ -15,10 +15,12 @@ const RefSchema = z.discriminatedUnion("step_type", [
     step_type: z.literal("mm_event"),
     event_ns: z.string().min(1),
     event_school_slug: z.string().min(1).optional().nullable(),
+    role: z.enum(["launch", "body", "failed"]).optional(),
   }),
   z.object({
     step_type: z.literal("url_click"),
     redirect_event_id: z.string().uuid(),
+    role: z.literal("body").optional(),
   }),
 ]);
 
@@ -96,7 +98,7 @@ export async function GET(
     sb
       .from("campaign_refs")
       .select(
-        "id, position, step_type, event_ns, redirect_event_id, event_school_slug"
+        "id, position, step_type, event_ns, redirect_event_id, event_school_slug, role"
       )
       .eq("campaign_id", id)
       .order("position", { ascending: true }),
@@ -118,6 +120,7 @@ export async function GET(
     event_ns: r.event_ns,
     redirect_event_id: r.redirect_event_id,
     event_school_slug: r.event_school_slug ?? null,
+    role: (r.role ?? "body") as CampaignRef["role"],
   }));
 
   const campaign: CampaignWithRefs = {
@@ -192,6 +195,7 @@ export async function PATCH(
           r.step_type === "url_click" ? r.redirect_event_id : null,
         event_school_slug:
           r.step_type === "mm_event" ? r.event_school_slug ?? null : null,
+        role: r.role ?? "body",
       }));
       const { error: insErr } = await sb.from("campaign_refs").insert(rows);
       if (insErr)

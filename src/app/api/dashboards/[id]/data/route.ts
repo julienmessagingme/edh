@@ -5,7 +5,10 @@ import { requireUser } from "@/lib/auth/require-user";
 import { resolveDateRange } from "@/lib/dashboards/date-range";
 import { getSchoolBySlug, isEdhScope } from "@/lib/schools";
 import { groupMetaCostsByCountry } from "@/lib/meta-pricing";
-import type { MetaCostBreakdownItem } from "@/lib/dashboards/types";
+import type {
+  MetaCostBreakdownItem,
+  CampaignCostSummary,
+} from "@/lib/dashboards/types";
 import type {
   ComputedRef,
   ComputedStep,
@@ -23,6 +26,7 @@ interface DashboardRow {
   date_preset: DatePreset;
   date_from: string | null;
   date_to: string | null;
+  campaign_id: string | null;
 }
 
 interface StepRow {
@@ -64,7 +68,9 @@ export async function GET(
 
   const { data: dash } = await sb
     .from("dashboards")
-    .select("id, created_by, school_slug, date_preset, date_from, date_to")
+    .select(
+      "id, created_by, school_slug, date_preset, date_from, date_to, campaign_id"
+    )
     .eq("id", id)
     .maybeSingle<DashboardRow>();
 
@@ -379,6 +385,125 @@ export async function GET(
     })
   );
 
-  const body: ComputedDashboardData = { from, to, steps: computed };
+  // --- Synthèse campagne (Phase 25) ---
+  // Si le dashboard est lié à une campagne avec un launch défini, on
+  // calcule le coût Meta brut (lancement), le failed éventuel, et le
+  // net (= lancement scaled par le ratio des envois réussis).
+  let campaignSummary: CampaignCostSummary | null = null;
+  if (dash.campaign_id) {
+    const { data: campaignRefs } = await sb
+      .from("campaign_refs")
+      .select(
+        "step_type, event_ns, event_school_slug, role"
+      )
+      .eq("campaign_id", dash.campaign_id)
+      .in("role", ["launch", "failed"]);
+
+    const launchRef = (campaignRefs ?? []).find(
+      (r) => r.role === "launch"
+    );
+    const failedRef = (campaignRefs ?? []).find(
+      (r) => r.role === "failed"
+    );
+
+    if (launchRef && launchRef.step_type === "mm_event" && launchRef.event_ns) {
+      const launchSchool = isEdh
+        ? launchRef.event_school_slug
+        : dashSchool;
+      const launchKey = launchSchool
+        ? `${launchSchool}|${launchRef.event_ns}`
+        : null;
+      const launchLabelMeta = launchKey ? mmLabels.get(launchKey) : null;
+
+      if (launchSchool && launchLabelMeta) {
+        const { data: launchOccs } = await sb
+          .from("mm_occurrences")
+          .select("text_value")
+          .eq("school_slug", launchSchool)
+          .eq("event_ns", launchRef.event_ns)
+          .gte("occurred_at", fromTs)
+          .lt("occurred_at", toTs)
+          .limit(10000);
+        const launchPhones = ((launchOccs ?? []) as {
+          text_value: string | null;
+        }[])
+          .map((r) => r.text_value ?? "")
+          .filter((p) => p.length > 0);
+        const launchCount = (launchOccs ?? []).length;
+        const launchBreakdown = groupMetaCostsByCountry(launchPhones).map(
+          (b): MetaCostBreakdownItem => ({
+            iso: b.iso,
+            name: b.name,
+            count: b.count,
+            rate_eur: b.rateEur,
+            total_eur: b.totalEur,
+          })
+        );
+        const launchCost = launchBreakdown.reduce(
+          (s, b) => s + b.total_eur,
+          0
+        );
+
+        let failedCount = 0;
+        let failedLabel = "";
+        if (failedRef && failedRef.step_type === "mm_event" && failedRef.event_ns) {
+          const failedSchool = isEdh
+            ? failedRef.event_school_slug
+            : dashSchool;
+          if (failedSchool) {
+            const failedKey = `${failedSchool}|${failedRef.event_ns}`;
+            const failedMeta = mmLabels.get(failedKey);
+            if (failedMeta) {
+              const { count: fc } = await sb
+                .from("mm_occurrences")
+                .select("*", { count: "exact", head: true })
+                .eq("school_slug", failedSchool)
+                .eq("event_ns", failedRef.event_ns)
+                .gte("occurred_at", fromTs)
+                .lt("occurred_at", toTs);
+              failedCount = fc ?? 0;
+              failedLabel = chipLabel(failedMeta.name, failedSchool);
+            }
+          }
+        }
+
+        // Net = launch scaled par (net_count / launch_count). On cap à 0
+        // si plus de failed que de launch (cas pathologique mais possible
+        // si les events sont mal configurés / mal alignés temporellement).
+        const netCount = Math.max(0, launchCount - failedCount);
+        const ratio = launchCount > 0 ? netCount / launchCount : 0;
+        const netBreakdown: MetaCostBreakdownItem[] = launchBreakdown.map(
+          (b) => ({
+            ...b,
+            count: Math.round(b.count * ratio),
+            total_eur: b.total_eur * ratio,
+          })
+        );
+        const netCost = launchCost * ratio;
+
+        campaignSummary = {
+          launch: {
+            count: launchCount,
+            cost_eur: launchCost,
+            breakdown: launchBreakdown,
+            label: chipLabel(launchLabelMeta.name, launchSchool),
+          },
+          failed: failedRef
+            ? { count: failedCount, label: failedLabel || "(indisponible)" }
+            : null,
+          net_count: netCount,
+          net_cost_eur: netCost,
+          net_breakdown: netBreakdown,
+        };
+      }
+    }
+  }
+
+  const body: ComputedDashboardData = {
+    from,
+    to,
+    steps: computed,
+    campaign_summary: campaignSummary,
+  };
   return NextResponse.json(body);
 }
