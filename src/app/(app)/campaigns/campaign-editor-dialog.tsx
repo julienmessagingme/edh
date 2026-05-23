@@ -183,8 +183,11 @@ export function CampaignEditorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
+      {/* `max-h-[90vh] flex flex-col` : la dialog ne dépasse jamais
+          l'écran. Le contenu interne (refs lists) prend `flex-1 min-h-0`
+          pour absorber l'espace disponible et avoir son propre scroll. */}
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogHeader className="shrink-0">
           <DialogTitle>
             {mode === "new" ? "Nouvelle campagne" : "Éditer la campagne"}
           </DialogTitle>
@@ -195,8 +198,8 @@ export function CampaignEditorDialog({
         ) : !palette ? (
           <p className="text-red-600 text-sm py-8">Erreur de chargement</p>
         ) : (
-          <div className="space-y-4">
-            <div className="space-y-2">
+          <div className="flex flex-col flex-1 min-h-0 space-y-4">
+            <div className="space-y-2 shrink-0">
               <Label htmlFor="campaign-name">Nom</Label>
               <Input
                 id="campaign-name"
@@ -207,7 +210,7 @@ export function CampaignEditorDialog({
               />
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 shrink-0">
               <input
                 id="campaign-shared"
                 type="checkbox"
@@ -225,9 +228,8 @@ export function CampaignEditorDialog({
               </span>
             </div>
 
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
+            <div className="flex flex-col flex-1 min-h-0 space-y-2">
+              <div className="flex items-center justify-between shrink-0">
                 <Label>
                   Briques de la campagne ({selected.size} sélectionnée
                   {selected.size > 1 ? "s" : ""})
@@ -240,7 +242,11 @@ export function CampaignEditorDialog({
                 />
               </div>
 
-              <div className="border rounded flex h-[440px]">
+              {/* `flex-1 min-h-0` : la zone refs prend l'espace restant
+                  dans la dialog. Plus de `h-[440px]` fixe qui débordait
+                  sur les petits écrans (laptop 13" + barre URL ≈ 700px
+                  utiles → dialog dépassait sans scroll). */}
+              <div className="border rounded flex flex-1 min-h-0">
                 <RefList
                   title={`Custom events MM (${filteredMm.length})`}
                   items={filteredMm}
@@ -262,7 +268,7 @@ export function CampaignEditorDialog({
           </div>
         )}
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
