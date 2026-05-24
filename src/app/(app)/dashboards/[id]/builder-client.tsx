@@ -870,17 +870,43 @@ export function BuilderClient({
             }
             onCollapse={toggleSteps}
             topSlot={
-              // En mode campagne avec un summary, on injecte les 2
-              // selects launch/failed AU-DESSUS de la liste des étapes.
-              // C'est plus logique d'avoir toutes les briques de la
-              // campagne (lancement, étapes funnel, failed) au même
-              // endroit que de les éparpiller entre la carte Synthèse
-              // et la zone d'étapes.
+              // En mode campagne avec un summary : event de LANCEMENT
+              // en haut, AVANT les étapes du funnel (c'est lui qui
+              // déclenche tout). Le failed est rendu en bas via bottomSlot.
               campaignId && computed?.campaign_summary ? (
-                <CampaignRolesInline
-                  summary={computed.campaign_summary}
-                  palette={palette}
+                <CampaignRoleInline
+                  label="Event de lancement"
+                  role="launch"
                   campaignId={campaignId}
+                  currentEventNs={computed.campaign_summary.launch.event_ns}
+                  currentSchoolSlug={
+                    computed.campaign_summary.launch.event_school_slug
+                  }
+                  items={palette.mmEvents.filter(
+                    (p) => p.has_text_value === true
+                  )}
+                  emptyMessage="Aucun event porteur de tel disponible."
+                  onChanged={async () => {
+                    await fetchData();
+                    setLocalRefsBump((v) => v + 1);
+                  }}
+                />
+              ) : null
+            }
+            bottomSlot={
+              campaignId && computed?.campaign_summary ? (
+                <CampaignRoleInline
+                  label="Event failed WhatsApp"
+                  role="failed"
+                  campaignId={campaignId}
+                  currentEventNs={
+                    computed.campaign_summary.failed?.event_ns ?? null
+                  }
+                  currentSchoolSlug={
+                    computed.campaign_summary.failed?.event_school_slug ?? null
+                  }
+                  items={palette.mmEvents}
+                  emptyMessage="Aucun event MM disponible."
                   onChanged={async () => {
                     await fetchData();
                     setLocalRefsBump((v) => v + 1);
@@ -1087,43 +1113,23 @@ function CampaignCostSummaryCard({
   );
 }
 
-/** Bloc compact intégré DANS la zone « Étapes du funnel » qui héberge
- *  les 2 selects de rôles launch/failed. Présenté avec un fond ambré
- *  subtil pour signaler qu'il s'agit de méta-briques (différent des
- *  étapes du funnel proprement dites). */
-function CampaignRolesInline({
-  summary,
-  palette,
-  campaignId,
-  onChanged,
-}: {
-  summary: CampaignCostSummary;
-  palette: Palette;
+/** Wrapper ambré pour 1 select de rôle (launch ou failed) placé soit
+ *  en topSlot soit en bottomSlot de StepsZone. Le fond ambré subtil
+ *  signale qu'il s'agit d'une méta-brique (différent des étapes du
+ *  funnel proprement dites). */
+function CampaignRoleInline(props: {
+  label: string;
+  role: "launch" | "failed";
   campaignId: string;
+  currentEventNs: string | null;
+  currentSchoolSlug: string | null;
+  items: PaletteItem[];
+  emptyMessage: string;
   onChanged: () => Promise<void> | void;
 }) {
   return (
-    <div className="bg-amber-50/30 border border-amber-200 rounded p-3 space-y-2 mb-3">
-      <RoleEventSelect
-        label="Event de lancement"
-        role="launch"
-        campaignId={campaignId}
-        currentEventNs={summary.launch.event_ns}
-        currentSchoolSlug={summary.launch.event_school_slug}
-        items={palette.mmEvents.filter((p) => p.has_text_value === true)}
-        emptyMessage="Aucun event porteur de tel disponible."
-        onChanged={onChanged}
-      />
-      <RoleEventSelect
-        label="Event failed WhatsApp"
-        role="failed"
-        campaignId={campaignId}
-        currentEventNs={summary.failed?.event_ns ?? null}
-        currentSchoolSlug={summary.failed?.event_school_slug ?? null}
-        items={palette.mmEvents}
-        emptyMessage="Aucun event MM disponible."
-        onChanged={onChanged}
-      />
+    <div className="bg-amber-50/30 border border-amber-200 rounded p-3 mb-3 last:mb-0 last:mt-3">
+      <RoleEventSelect {...props} />
     </div>
   );
 }
@@ -1306,14 +1312,19 @@ function StepsZone({
   title,
   onCollapse,
   topSlot,
+  bottomSlot,
   children,
 }: {
   hasSteps: boolean;
   title: string;
   onCollapse?: () => void;
   /** Bloc optionnel rendu entre le titre et la liste des étapes.
-   *  Utilisé en mode campagne pour héberger les selects launch/failed. */
+   *  Mode campagne : select Event de lancement (en haut, avant le funnel). */
   topSlot?: React.ReactNode;
+  /** Bloc optionnel rendu SOUS la liste des étapes.
+   *  Mode campagne : select Event failed WhatsApp (en bas, après le funnel).
+   *  Cohérent avec le flow logique lancement → étapes → failed. */
+  bottomSlot?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: STEPS_ZONE_ID });
@@ -1337,6 +1348,7 @@ function StepsZone({
       <h4 className="text-xs uppercase text-zinc-500 mb-2">{title}</h4>
       {topSlot}
       {children}
+      {bottomSlot}
     </section>
   );
 }
