@@ -4,7 +4,10 @@
 
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json ./
+# `.npmrc` doit être copié AVEC le package.json sinon ses flags
+# (notamment `legacy-peer-deps=true` pour les peer deps non-React-19 de
+# @visx/* 3.12) ne sont pas pris en compte par `npm ci`.
+COPY package.json package-lock.json .npmrc ./
 RUN npm ci
 
 FROM node:22-alpine AS builder
