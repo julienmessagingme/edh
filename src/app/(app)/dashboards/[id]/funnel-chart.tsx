@@ -10,28 +10,27 @@ import {
 import type { ComputedStep } from "@/lib/dashboards/types";
 import { compactStepLabel } from "@/lib/dashboards/types";
 
-/** Palette par POSITION dans la pile (pas par identité de source) :
- *  le segment du bas de chaque barre prend toujours STACK_COLORS[0],
- *  celui juste au-dessus STACK_COLORS[1], etc. Conséquence souhaitée :
- *  une même barre ne mélange jamais 2 couleurs proches, et 2 barres
- *  adjacentes n'ont jamais leur segment principal de la même couleur
- *  que les nuances secondaires de leur voisine. La sémantique cross-barre
- *  (« cette source est en violet partout ») est perdue mais le tooltip
- *  + les sous-pourcentages dans la table permettent de la suivre. */
-const STACK_COLORS = [
-  "#27272a", // zinc-800 — segment principal (le plus en bas, le + gros par tri)
-  "#dc2626", // red-600
+/** 1 couleur stable par CUSTOM EVENT (identifié par son label) à travers
+ *  toutes les étapes. Si le même event apparaît dans 2 barres, il a la
+ *  même couleur dans les 2 (volontaire — on voit que c'est le même).
+ *
+ *  Palette 12 vraies couleurs distinctes (aucun gris/noir dominant) pour
+ *  qu'aucun event ne se fonde dans un fond neutre. Espacées sur le wheel
+ *  chromatique (~30°). À partir du 13ème event distinct, on cycle. */
+const EVENT_COLORS = [
+  "#7c3aed", // violet-600
   "#0284c7", // sky-600
   "#16a34a", // green-600
   "#ea580c", // orange-600
-  "#7c3aed", // violet-600
+  "#dc2626", // red-600
   "#facc15", // yellow-400
   "#0d9488", // teal-600
   "#ec4899", // pink-500
+  "#c026d3", // fuchsia-600
+  "#65a30d", // lime-600
+  "#0891b2", // cyan-600
   "#a16207", // yellow-700
 ];
-
-const SIMPLE_COLOR = "#27272a";
 
 /** Met en forme un nombre fr (1 234). */
 function fmtNum(v: unknown): string {
@@ -39,92 +38,47 @@ function fmtNum(v: unknown): string {
   return v.toLocaleString("fr-FR");
 }
 
-interface RefForStep {
-  label: string;
-  count: number;
-}
-
 export function FunnelChart({ steps }: { steps: ComputedStep[] }) {
   if (steps.length === 0) return null;
 
-  // Mode stacked dès qu'au moins une étape cumule plusieurs refs.
-  const hasCumul = steps.some(
-    (s) => s.refs.filter((r) => r.available).length > 1
-  );
-
-  if (!hasCumul) {
-    // ── Mode simple : 1 série Volume, 1 couleur uniforme ──
-    type Row = { label: string; Volume: number };
-    const data: Row[] = steps.map((s, i) => ({
-      label: `${i + 1}. ${compactStepLabel(s)}`,
-      Volume: s.count,
-    }));
-    return (
-      <div className="w-full">
-        <BarChart
-          data={data}
-          xDataKey="label"
-          barGap={0.3}
-          margin={{ top: 36, right: 24, bottom: 56, left: 24 }}
-          aspectRatio="16 / 7"
-          animationDuration={900}
-        >
-          <Grid horizontal fadeHorizontal={false} />
-          <Bar
-            dataKey="Volume"
-            fill={SIMPLE_COLOR}
-            lineCap={4}
-            animationType="grow"
-          />
-          <BarXAxis showAllLabels tickerHalfWidth={70} />
-          <ChartTooltip
-            showDots={false}
-            rows={(point) => [
-              {
-                color: SIMPLE_COLOR,
-                label: "Volume",
-                value: fmtNum(point.Volume),
-              },
-            ]}
-          />
-        </BarChart>
-      </div>
-    );
+  // Collecte les events distincts (par label) à travers toutes les étapes,
+  // dans l'ordre d'apparition. Chacun gagne une couleur stable.
+  type Series = { label: string; color: string };
+  const series: Series[] = [];
+  const seen = new Set<string>();
+  for (const s of steps) {
+    for (const r of s.refs) {
+      if (!r.available || seen.has(r.label)) continue;
+      seen.add(r.label);
+      series.push({
+        label: r.label,
+        color: EVENT_COLORS[series.length % EVENT_COLORS.length],
+      });
+    }
+  }
+  // Cas dégénéré : aucun event available → on rend quand même quelque
+  // chose pour éviter un chart vide cryptique.
+  if (series.length === 0) {
+    series.push({ label: "(vide)", color: EVENT_COLORS[0] });
   }
 
-  // ── Mode stacked : 1 série par POSITION dans la pile ──
-  // Chaque étape range ses refs (triées par count desc, le plus gros
-  // d'abord) dans des slots seg_0, seg_1, seg_2…
-  //   - seg_0  → segment du bas, plus grand, couleur principale (zinc).
-  //   - seg_N  → segment du haut, plus petit, couleur secondaire.
-  // Couleur fixée par seg index, pas par source : 2 barres adjacentes
-  // ont donc le même seg_0 visuel (zinc dominant) — c'est OK et lisible
-  // car ce sont 2 "barres principales" distinctes côté UX.
-  const maxSources = Math.max(
-    ...steps.map((s) => s.refs.filter((r) => r.available).length),
-    1
-  );
-  const segKeys = Array.from({ length: maxSources }, (_, i) => `__seg_${i}`);
-
-  type Row = {
-    label: string;
-    __total__: number;
-    __sources__: RefForStep[]; // ordre = ordre des seg_*
-  } & Record<string, number | string | RefForStep[]>;
-
+  // Data : 1 ligne par étape, 1 colonne par série + __total__ pour le
+  // tooltip. Les colonnes série absentes d'une étape sont à 0.
+  type Row = { label: string; __total__: number } & Record<
+    string,
+    number | string
+  >;
   const data: Row[] = steps.map((s, i) => {
-    const sorted = s.refs
-      .filter((r) => r.available)
-      .map((r) => ({ label: r.label, count: r.count }))
-      .sort((a, b) => b.count - a.count);
     const row: Row = {
       label: `${i + 1}. ${compactStepLabel(s)}`,
       __total__: s.count,
-      __sources__: sorted,
     };
-    segKeys.forEach((key, idx) => {
-      row[key] = sorted[idx]?.count ?? 0;
-    });
+    for (const ser of series) {
+      const ref = s.refs.find(
+        (r) => r.available && r.label === ser.label
+      );
+      row[ser.label] = ref ? ref.count : 0;
+    }
     return row;
   });
 
@@ -141,11 +95,11 @@ export function FunnelChart({ steps }: { steps: ComputedStep[] }) {
         animationDuration={900}
       >
         <Grid horizontal fadeHorizontal={false} />
-        {segKeys.map((key, idx) => (
+        {series.map((ser) => (
           <Bar
-            key={key}
-            dataKey={key}
-            fill={STACK_COLORS[idx % STACK_COLORS.length]}
+            key={ser.label}
+            dataKey={ser.label}
+            fill={ser.color}
             lineCap={4}
             animationType="grow"
           />
@@ -154,17 +108,22 @@ export function FunnelChart({ steps }: { steps: ComputedStep[] }) {
         <ChartTooltip
           showDots={false}
           rows={(point) => {
-            const sources = (point.__sources__ as RefForStep[]) ?? [];
             const total = Number(point.__total__ ?? 0);
-            // Total en tête, puis chaque source avec sa vraie couleur
-            // (= celle du seg_index correspondant) et son volume.
+            // Total en tête (gris), puis chaque event présent dans cette
+            // étape avec sa couleur stable + son volume. Tri par volume
+            // décroissant.
+            const rows = series
+              .map((ser) => ({
+                color: ser.color,
+                label: ser.label,
+                value: Number(point[ser.label] ?? 0),
+              }))
+              .filter((r) => r.value > 0)
+              .sort((a, b) => b.value - a.value)
+              .map((r) => ({ ...r, value: fmtNum(r.value) }));
             return [
               { color: "#71717a", label: "Total", value: fmtNum(total) },
-              ...sources.map((src, idx) => ({
-                color: STACK_COLORS[idx % STACK_COLORS.length],
-                label: src.label,
-                value: fmtNum(src.count),
-              })),
+              ...rows,
             ];
           }}
         />
