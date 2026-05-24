@@ -5,29 +5,28 @@ import {
   Bar,
   Grid,
   BarXAxis,
-  BarYAxis,
   ChartTooltip,
 } from "@/components/ui/bar-chart";
 import type { ComputedStep } from "@/lib/dashboards/types";
 import { compactStepLabel } from "@/lib/dashboards/types";
 
-/** Palette contrastée pour le mode stacked : il faut distinguer N sources
- *  empilées dans la même barre. Couleurs choisies pour un bon contraste
- *  entre voisines (zinc dark / violet / sky / green / orange / red / yellow
- *  dark / cyan / purple / lime / fuchsia / teal). */
+/** Palette stacked espacée sur le wheel chromatique pour distinguer N
+ *  sources empilées dans la même barre. Une couleur reste **stable par
+ *  source** (par label) à travers les étapes — c'est le comportement
+ *  voulu pour suivre visuellement la contribution de chaque source au
+ *  fil du funnel. Les hues sont écartées (~35-50° entre voisines) pour
+ *  qu'on ne confonde pas 2 sources adjacentes. */
 const STACK_COLORS = [
-  "#27272a",
-  "#7c3aed",
-  "#0284c7",
-  "#16a34a",
-  "#ea580c",
-  "#dc2626",
-  "#a16207",
-  "#0891b2",
-  "#9333ea",
-  "#65a30d",
-  "#c026d3",
-  "#0d9488",
+  "#27272a", // zinc-800   (neutre, kickoff)
+  "#dc2626", // red-600    (hue 0°)
+  "#ea580c", // orange-600 (hue 25°)
+  "#facc15", // yellow-400 (hue 50°)
+  "#16a34a", // green-600  (hue 142°)
+  "#0d9488", // teal-600   (hue 173°)
+  "#0284c7", // sky-600    (hue 199°)
+  "#7c3aed", // violet-600 (hue 263°)
+  "#c026d3", // fuchsia-600(hue 293°)
+  "#ec4899", // pink-500   (hue 330°)
 ];
 
 const SIMPLE_COLOR = "#27272a"; // zinc-800 — barre solo (1 source / étape)
@@ -104,12 +103,11 @@ export function FunnelChart({ steps }: { steps: ComputedStep[] }) {
         stacked={hasCumul}
         stackGap={hasCumul ? 2 : 0}
         barGap={0.3}
-        margin={{ top: 36, right: 24, bottom: 56, left: 56 }}
+        margin={{ top: 36, right: 24, bottom: 56, left: 24 }}
         aspectRatio="16 / 7"
         animationDuration={900}
       >
         <Grid horizontal fadeHorizontal={false} />
-        <BarYAxis />
         {series.map((ser) => (
           <Bar
             key={ser.label}

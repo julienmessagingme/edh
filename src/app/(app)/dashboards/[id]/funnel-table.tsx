@@ -86,23 +86,39 @@ export function FunnelTable({ steps }: { steps: ComputedStep[] }) {
                   </div>
                   {showBreakdown && (
                     <ul className="mt-1 ml-6 text-xs text-zinc-500 space-y-0.5">
-                      {s.refs.map((r, ri) => (
-                        <li
-                          key={`${ri}-${r.ref_id}`}
-                          className={`flex justify-between gap-4 ${
-                            !r.available ? "opacity-60" : ""
-                          }`}
-                        >
-                          <span className="truncate">
-                            <span className="text-zinc-400 mr-1">·</span>
-                            {r.label}
-                            {!r.available && (
-                              <span className="ml-1 text-amber-700">(indispo)</span>
-                            )}
-                          </span>
-                          <span className="tabular-nums">{r.count}</span>
-                        </li>
-                      ))}
+                      {s.refs.map((r, ri) => {
+                        // % de la ref dans l'étape parent : 458/1089 → 42.1%.
+                        // Vide pour les refs indisponibles ou si l'étape
+                        // totalise 0 (division par zéro).
+                        const refPct =
+                          r.available && s.count > 0
+                            ? `${((r.count / s.count) * 100).toFixed(1)}%`
+                            : null;
+                        return (
+                          <li
+                            key={`${ri}-${r.ref_id}`}
+                            className={`flex justify-between gap-4 ${
+                              !r.available ? "opacity-60" : ""
+                            }`}
+                          >
+                            <span className="truncate">
+                              <span className="text-zinc-400 mr-1">·</span>
+                              {r.label}
+                              {!r.available && (
+                                <span className="ml-1 text-amber-700">(indispo)</span>
+                              )}
+                            </span>
+                            <span className="tabular-nums flex items-baseline gap-2 shrink-0">
+                              <span>{r.count}</span>
+                              {refPct && (
+                                <span className="text-zinc-400 text-[10px]">
+                                  ({refPct})
+                                </span>
+                              )}
+                            </span>
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
                 </td>
