@@ -758,20 +758,8 @@ export function BuilderClient({
             dashboard est lié à une campagne avec un launch défini.
             Donne le coût brut, le failed, les envois réussis et le coût
             net (cliquable → détail par pays). */}
-        {computed?.campaign_summary && campaignId && (
-          <CampaignCostSummaryCard
-            summary={computed.campaign_summary}
-            palette={palette}
-            campaignId={campaignId}
-            onChanged={async () => {
-              // Refresh des données du dashboard (synthèse + viz) ET
-              // des refs de la campagne (palette body filtrée du builder
-              // via campaignKeySet) en bumpant localRefsBump qui est
-              // dans les deps du useEffect de fetch des refs.
-              await fetchData();
-              setLocalRefsBump((v) => v + 1);
-            }}
-          />
+        {computed?.campaign_summary && (
+          <CampaignCostSummaryCard summary={computed.campaign_summary} />
         )}
 
         <div
@@ -881,6 +869,25 @@ export function BuilderClient({
               dashboard.type === "pie" ? "Parts du pie chart" : "Étapes du funnel"
             }
             onCollapse={toggleSteps}
+            topSlot={
+              // En mode campagne avec un summary, on injecte les 2
+              // selects launch/failed AU-DESSUS de la liste des étapes.
+              // C'est plus logique d'avoir toutes les briques de la
+              // campagne (lancement, étapes funnel, failed) au même
+              // endroit que de les éparpiller entre la carte Synthèse
+              // et la zone d'étapes.
+              campaignId && computed?.campaign_summary ? (
+                <CampaignRolesInline
+                  summary={computed.campaign_summary}
+                  palette={palette}
+                  campaignId={campaignId}
+                  onChanged={async () => {
+                    await fetchData();
+                    setLocalRefsBump((v) => v + 1);
+                  }}
+                />
+              ) : null
+            }
           >
             <SortableContext items={stepIds} strategy={verticalListSortingStrategy}>
               {dashboard.steps.length === 0 ? (
@@ -1022,23 +1029,18 @@ export function BuilderClient({
   );
 }
 
-/** Encadré ambre au-dessus du builder, visible uniquement pour les
- *  dashboards liés à une campagne ayant un launch. 4 stats + 2 selects
- *  inline pour changer launch/failed sans ouvrir la dialog. */
+/** Encadré ambre au-dessus du builder. 4 stats lecture seule — les
+ *  modifications de launch/failed se font désormais via les selects
+ *  inline dans la colonne « Étapes du funnel » (CampaignRolesInline),
+ *  pour regrouper visuellement toutes les briques de la campagne. */
 function CampaignCostSummaryCard({
   summary,
-  palette,
-  campaignId,
-  onChanged,
 }: {
   summary: CampaignCostSummary;
-  palette: Palette;
-  campaignId: string;
-  onChanged: () => Promise<void> | void;
 }) {
   return (
-    <div className="bg-amber-50/40 border border-amber-200 rounded-lg p-4 space-y-4">
-      <div className="text-xs uppercase text-amber-800 font-semibold tracking-wide">
+    <div className="bg-amber-50/40 border border-amber-200 rounded-lg p-4">
+      <div className="text-xs uppercase text-amber-800 font-semibold tracking-wide mb-3">
         Synthèse coût Meta de la campagne
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
@@ -1081,30 +1083,47 @@ function CampaignCostSummaryCard({
           }
         />
       </div>
+    </div>
+  );
+}
 
-      {/* Selects inline pour changer launch / failed sans dialog. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-amber-200 pt-3">
-        <RoleEventSelect
-          label="Event de lancement"
-          role="launch"
-          campaignId={campaignId}
-          currentEventNs={summary.launch.event_ns}
-          currentSchoolSlug={summary.launch.event_school_slug}
-          items={palette.mmEvents.filter((p) => p.has_text_value === true)}
-          emptyMessage="Aucun event porteur de tel disponible."
-          onChanged={onChanged}
-        />
-        <RoleEventSelect
-          label="Event failed WhatsApp"
-          role="failed"
-          campaignId={campaignId}
-          currentEventNs={summary.failed?.event_ns ?? null}
-          currentSchoolSlug={summary.failed?.event_school_slug ?? null}
-          items={palette.mmEvents}
-          emptyMessage="Aucun event MM disponible."
-          onChanged={onChanged}
-        />
-      </div>
+/** Bloc compact intégré DANS la zone « Étapes du funnel » qui héberge
+ *  les 2 selects de rôles launch/failed. Présenté avec un fond ambré
+ *  subtil pour signaler qu'il s'agit de méta-briques (différent des
+ *  étapes du funnel proprement dites). */
+function CampaignRolesInline({
+  summary,
+  palette,
+  campaignId,
+  onChanged,
+}: {
+  summary: CampaignCostSummary;
+  palette: Palette;
+  campaignId: string;
+  onChanged: () => Promise<void> | void;
+}) {
+  return (
+    <div className="bg-amber-50/30 border border-amber-200 rounded p-3 space-y-2 mb-3">
+      <RoleEventSelect
+        label="Event de lancement"
+        role="launch"
+        campaignId={campaignId}
+        currentEventNs={summary.launch.event_ns}
+        currentSchoolSlug={summary.launch.event_school_slug}
+        items={palette.mmEvents.filter((p) => p.has_text_value === true)}
+        emptyMessage="Aucun event porteur de tel disponible."
+        onChanged={onChanged}
+      />
+      <RoleEventSelect
+        label="Event failed WhatsApp"
+        role="failed"
+        campaignId={campaignId}
+        currentEventNs={summary.failed?.event_ns ?? null}
+        currentSchoolSlug={summary.failed?.event_school_slug ?? null}
+        items={palette.mmEvents}
+        emptyMessage="Aucun event MM disponible."
+        onChanged={onChanged}
+      />
     </div>
   );
 }
@@ -1286,11 +1305,15 @@ function StepsZone({
   hasSteps,
   title,
   onCollapse,
+  topSlot,
   children,
 }: {
   hasSteps: boolean;
   title: string;
   onCollapse?: () => void;
+  /** Bloc optionnel rendu entre le titre et la liste des étapes.
+   *  Utilisé en mode campagne pour héberger les selects launch/failed. */
+  topSlot?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: STEPS_ZONE_ID });
@@ -1312,6 +1335,7 @@ function StepsZone({
         </button>
       )}
       <h4 className="text-xs uppercase text-zinc-500 mb-2">{title}</h4>
+      {topSlot}
       {children}
     </section>
   );
