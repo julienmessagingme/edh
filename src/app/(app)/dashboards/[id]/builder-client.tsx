@@ -14,7 +14,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Trash2, X, Plus, GripVertical, Download } from "lucide-react";
+import {
+  Trash2,
+  X,
+  Plus,
+  GripVertical,
+  Download,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import {
   DndContext,
   DragEndEvent,
@@ -166,6 +174,11 @@ export function BuilderClient({
   const [computing, setComputing] = useState(false);
   const [computeError, setComputeError] = useState(false);
   const [view, setView] = useState<FunnelView>("bar");
+  // Collapse/expand des 2 premières colonnes du builder pour laisser
+  // plus de place à la viz. Persisté en localStorage (par navigateur,
+  // pas par tableau — on garde la pref globale de l'utilisateur).
+  const [paletteCollapsed, setPaletteCollapsed] = useState(false);
+  const [stepsCollapsed, setStepsCollapsed] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dataAbort = useRef<AbortController | null>(null);
   const exportRef = useRef<HTMLDivElement>(null);
@@ -176,7 +189,32 @@ export function BuilderClient({
     if (typeof window === "undefined") return;
     const stored = window.localStorage.getItem(VIEW_STORAGE_KEY);
     if (stored === "bar" || stored === "funnel") setView(stored);
+    if (window.localStorage.getItem("edh_palette_collapsed") === "1") {
+      setPaletteCollapsed(true);
+    }
+    if (window.localStorage.getItem("edh_steps_collapsed") === "1") {
+      setStepsCollapsed(true);
+    }
   }, []);
+
+  function togglePalette() {
+    setPaletteCollapsed((v) => {
+      const next = !v;
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("edh_palette_collapsed", next ? "1" : "0");
+      }
+      return next;
+    });
+  }
+  function toggleSteps() {
+    setStepsCollapsed((v) => {
+      const next = !v;
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("edh_steps_collapsed", next ? "1" : "0");
+      }
+      return next;
+    });
+  }
 
   function changeView(next: FunnelView) {
     setView(next);
@@ -719,8 +757,26 @@ export function BuilderClient({
           <CampaignCostSummaryCard summary={computed.campaign_summary} />
         )}
 
-        <div className="grid grid-cols-[340px_minmax(0,1fr)_minmax(0,1.2fr)] gap-4">
-          <aside className="bg-white border rounded-lg p-3 space-y-4 max-h-[600px] overflow-auto">
+        <div
+          className="grid gap-4 transition-[grid-template-columns] duration-200 ease-out"
+          style={{
+            gridTemplateColumns: `${paletteCollapsed ? "44px" : "340px"} ${
+              stepsCollapsed ? "44px" : "minmax(0,1fr)"
+            } minmax(0,1.2fr)`,
+          }}
+        >
+          {paletteCollapsed ? (
+            <CollapsedPane label="Palette" onExpand={togglePalette} />
+          ) : (
+          <aside className="bg-white border rounded-lg p-3 space-y-4 max-h-[600px] overflow-auto relative">
+            <button
+              onClick={togglePalette}
+              className="absolute top-2 right-2 text-zinc-400 hover:text-zinc-900 p-0.5"
+              title="Réduire la palette"
+              aria-label="Réduire la palette"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
             {isCampaignMode ? (
               <div>
                 <p className="text-xs uppercase text-zinc-500 mb-1">
@@ -790,12 +846,24 @@ export function BuilderClient({
                 </p>
               )}
           </aside>
+          )}
 
+          {stepsCollapsed ? (
+            <CollapsedPane
+              label={
+                dashboard.type === "pie"
+                  ? "Parts du pie chart"
+                  : "Étapes du funnel"
+              }
+              onExpand={toggleSteps}
+            />
+          ) : (
           <StepsZone
             hasSteps={dashboard.steps.length > 0}
             title={
               dashboard.type === "pie" ? "Parts du pie chart" : "Étapes du funnel"
             }
+            onCollapse={toggleSteps}
           >
             <SortableContext items={stepIds} strategy={verticalListSortingStrategy}>
               {dashboard.steps.length === 0 ? (
@@ -822,6 +890,7 @@ export function BuilderClient({
               )}
             </SortableContext>
           </StepsZone>
+          )}
 
           <section className="bg-white border rounded-lg p-3 min-h-[200px] space-y-3">
             <div className="flex items-center justify-between gap-2">
@@ -1059,23 +1128,65 @@ function PaletteRow({ item }: { item: PaletteItem }) {
 function StepsZone({
   hasSteps,
   title,
+  onCollapse,
   children,
 }: {
   hasSteps: boolean;
   title: string;
+  onCollapse?: () => void;
   children: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: STEPS_ZONE_ID });
   return (
     <section
       ref={setNodeRef}
-      className={`bg-white border rounded-lg p-3 space-y-2 min-h-[200px] transition-colors ${
+      className={`bg-white border rounded-lg p-3 space-y-2 min-h-[200px] transition-colors relative ${
         isOver && !hasSteps ? "bg-zinc-50 border-zinc-400" : ""
       }`}
     >
+      {onCollapse && (
+        <button
+          onClick={onCollapse}
+          className="absolute top-2 right-2 text-zinc-400 hover:text-zinc-900 p-0.5"
+          title="Réduire les étapes"
+          aria-label="Réduire les étapes"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+      )}
       <h4 className="text-xs uppercase text-zinc-500 mb-2">{title}</h4>
       {children}
     </section>
+  );
+}
+
+/** Bande étroite (44px) qui remplace une colonne du builder quand elle
+ *  est rétractée. Affiche un bouton d'expand en haut + le titre en mode
+ *  écrit vertical pour qu'on sache à quoi sert le panneau caché. */
+function CollapsedPane({
+  label,
+  onExpand,
+}: {
+  label: string;
+  onExpand: () => void;
+}) {
+  return (
+    <aside className="bg-white border rounded-lg p-2 flex flex-col items-center gap-3 min-h-[200px]">
+      <button
+        onClick={onExpand}
+        className="text-zinc-400 hover:text-zinc-900 p-0.5"
+        title={`Déplier « ${label} »`}
+        aria-label={`Déplier ${label}`}
+      >
+        <ChevronRight className="h-4 w-4" />
+      </button>
+      <span
+        className="text-[10px] uppercase text-zinc-500 font-semibold tracking-wide select-none"
+        style={{ writingMode: "vertical-rl" }}
+      >
+        {label}
+      </span>
+    </aside>
   );
 }
 
