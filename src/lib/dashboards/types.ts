@@ -112,10 +112,16 @@ export interface CampaignCostSummary {
     breakdown: MetaCostBreakdownItem[];
     /** Label affichable de l'event de lancement (avec chip école en EDH). */
     label: string;
+    /** Identité brute de la ref launch, utile pour les selects inline
+     *  du builder (matcher la palette key + envoyer un PATCH). */
+    event_ns: string;
+    event_school_slug: string | null;
   };
   failed: {
     count: number;
     label: string;
+    event_ns: string;
+    event_school_slug: string | null;
   } | null;
   net_count: number;
   net_cost_eur: number;

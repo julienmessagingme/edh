@@ -164,6 +164,11 @@ export function BuilderClient({
   const [campaignKeySet, setCampaignKeySet] = useState<Set<string> | null>(
     null
   );
+  /** Bumpé localement après une modif via le RoleEventSelect inline.
+   *  S'ajoute au `campaignRefsVersion` externe pour forcer le refetch
+   *  des refs de la campagne (et donc la mise à jour de campaignKeySet
+   *  → palette body filtered). */
+  const [localRefsBump, setLocalRefsBump] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeDrag, setActiveDrag] = useState<{
@@ -334,7 +339,7 @@ export function BuilderClient({
     return () => {
       alive = false;
     };
-  }, [campaignFilter, campaignRefsVersion]);
+  }, [campaignFilter, campaignRefsVersion, localRefsBump]);
 
   const persist = useCallback(
     (body: Record<string, unknown>) => {
@@ -753,8 +758,20 @@ export function BuilderClient({
             dashboard est lié à une campagne avec un launch défini.
             Donne le coût brut, le failed, les envois réussis et le coût
             net (cliquable → détail par pays). */}
-        {computed?.campaign_summary && (
-          <CampaignCostSummaryCard summary={computed.campaign_summary} />
+        {computed?.campaign_summary && campaignId && (
+          <CampaignCostSummaryCard
+            summary={computed.campaign_summary}
+            palette={palette}
+            campaignId={campaignId}
+            onChanged={async () => {
+              // Refresh des données du dashboard (synthèse + viz) ET
+              // des refs de la campagne (palette body filtrée du builder
+              // via campaignKeySet) en bumpant localRefsBump qui est
+              // dans les deps du useEffect de fetch des refs.
+              await fetchData();
+              setLocalRefsBump((v) => v + 1);
+            }}
+          />
         )}
 
         <div
@@ -1006,19 +1023,22 @@ export function BuilderClient({
 }
 
 /** Encadré ambre au-dessus du builder, visible uniquement pour les
- *  dashboards liés à une campagne ayant un launch. 4 stats :
- *    1. Envois lancés (count launch + label)
- *    2. Failed (si event failed défini)
- *    3. Envois réussis (launch - failed)
- *    4. Coût net (cliquable → modale détail par pays) */
+ *  dashboards liés à une campagne ayant un launch. 4 stats + 2 selects
+ *  inline pour changer launch/failed sans ouvrir la dialog. */
 function CampaignCostSummaryCard({
   summary,
+  palette,
+  campaignId,
+  onChanged,
 }: {
   summary: CampaignCostSummary;
+  palette: Palette;
+  campaignId: string;
+  onChanged: () => Promise<void> | void;
 }) {
   return (
-    <div className="bg-amber-50/40 border border-amber-200 rounded-lg p-4">
-      <div className="text-xs uppercase text-amber-800 font-semibold tracking-wide mb-3">
+    <div className="bg-amber-50/40 border border-amber-200 rounded-lg p-4 space-y-4">
+      <div className="text-xs uppercase text-amber-800 font-semibold tracking-wide">
         Synthèse coût Meta de la campagne
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
@@ -1061,7 +1081,144 @@ function CampaignCostSummaryCard({
           }
         />
       </div>
+
+      {/* Selects inline pour changer launch / failed sans dialog. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-amber-200 pt-3">
+        <RoleEventSelect
+          label="Event de lancement"
+          role="launch"
+          campaignId={campaignId}
+          currentEventNs={summary.launch.event_ns}
+          currentSchoolSlug={summary.launch.event_school_slug}
+          items={palette.mmEvents.filter((p) => p.has_text_value === true)}
+          emptyMessage="Aucun event porteur de tel disponible."
+          onChanged={onChanged}
+        />
+        <RoleEventSelect
+          label="Event failed WhatsApp"
+          role="failed"
+          campaignId={campaignId}
+          currentEventNs={summary.failed?.event_ns ?? null}
+          currentSchoolSlug={summary.failed?.event_school_slug ?? null}
+          items={palette.mmEvents}
+          emptyMessage="Aucun event MM disponible."
+          onChanged={onChanged}
+        />
+      </div>
     </div>
+  );
+}
+
+/** Select inline qui modifie immédiatement (via API) l'event d'un rôle
+ *  donné (launch ou failed) sur la campagne. Affiche les events
+ *  candidats issus de la palette, avec optgroup par école en mode EDH.
+ *  Une option « — Aucun — » pour clear le rôle. */
+function RoleEventSelect({
+  label,
+  role,
+  campaignId,
+  currentEventNs,
+  currentSchoolSlug,
+  items,
+  emptyMessage,
+  onChanged,
+}: {
+  label: string;
+  role: "launch" | "failed";
+  campaignId: string;
+  currentEventNs: string | null;
+  currentSchoolSlug: string | null;
+  items: PaletteItem[];
+  emptyMessage: string;
+  onChanged: () => Promise<void> | void;
+}) {
+  const [busy, setBusy] = useState(false);
+  // Valeur courante = la palette key correspondant à l'event_ns/school
+  // courants. Si non trouvée (event archivé, école retirée), tombe sur "".
+  const currentKey = currentEventNs
+    ? currentSchoolSlug
+      ? `${currentSchoolSlug}:${currentEventNs}`
+      : currentEventNs
+    : "";
+
+  async function apply(refId: string) {
+    setBusy(true);
+    try {
+      let body: { role: string; event_ns: string | null; event_school_slug?: string | null };
+      if (!refId) {
+        body = { role, event_ns: null };
+      } else {
+        // Split palette key en mode EDH ("<school>:<event_ns>") vs école
+        // précise (juste event_ns).
+        const item = items.find((p) => p.ref_id === refId);
+        if (!item) return;
+        const eventNs = item.school_slug
+          ? item.ref_id.slice(item.school_slug.length + 1)
+          : item.ref_id;
+        body = {
+          role,
+          event_ns: eventNs,
+          event_school_slug: item.school_slug ?? null,
+        };
+      }
+      const r = await fetch(`/api/campaigns/${campaignId}/role-event`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      await onChanged();
+    } catch {
+      toast.error("Impossible d'enregistrer le changement");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const isMultiSchool = items.some((p) => !!p.school_name);
+  const groups = new Map<string, PaletteItem[]>();
+  if (isMultiSchool) {
+    for (const i of items) {
+      const k = i.school_name ?? i.school_slug ?? "_";
+      const arr = groups.get(k) ?? [];
+      arr.push(i);
+      groups.set(k, arr);
+    }
+  }
+
+  return (
+    <label className="block space-y-1">
+      <span className="text-[10px] uppercase text-zinc-500 font-semibold tracking-wide">
+        {label}
+      </span>
+      {items.length === 0 ? (
+        <p className="text-xs text-zinc-400 italic">{emptyMessage}</p>
+      ) : (
+        <select
+          value={currentKey}
+          onChange={(e) => apply(e.target.value)}
+          disabled={busy}
+          className="w-full text-sm border rounded px-2 py-1.5 bg-white disabled:opacity-60"
+        >
+          <option value="">— Aucun —</option>
+          {isMultiSchool
+            ? Array.from(groups.entries()).map(([school, list]) => (
+                <optgroup key={school} label={school}>
+                  {list.map((i) => (
+                    <option key={i.ref_id} value={i.ref_id}>
+                      {i.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))
+            : items.map((i) => (
+                <option key={i.ref_id} value={i.ref_id}>
+                  {i.label}
+                </option>
+              ))}
+        </select>
+      )}
+    </label>
   );
 }
 

@@ -487,10 +487,18 @@ export async function GET(
             cost_eur: launchCost,
             breakdown: launchBreakdown,
             label: chipLabel(launchLabelMeta.name, launchSchool),
+            event_ns: launchRef.event_ns,
+            event_school_slug: launchRef.event_school_slug ?? null,
           },
-          failed: failedRef
-            ? { count: failedCount, label: failedLabel || "(indisponible)" }
-            : null,
+          failed:
+            failedRef && failedRef.event_ns
+              ? {
+                  count: failedCount,
+                  label: failedLabel || "(indisponible)",
+                  event_ns: failedRef.event_ns,
+                  event_school_slug: failedRef.event_school_slug ?? null,
+                }
+              : null,
           net_count: netCount,
           net_cost_eur: netCost,
           net_breakdown: netBreakdown,
