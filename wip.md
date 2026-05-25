@@ -4,11 +4,11 @@
 
 ## En cours
 
-(rien — Phase 25 Campagnes structurées livrée 2026-05-23. Prod sur https://edh.messagingme.app)
+(rien — Phase 26 « tableaux partageables » livrée 2026-05-25. Prod sur https://edh.messagingme.app)
 
-## À appliquer avant déploiement de la Phase 25
+## À appliquer avant déploiement de la Phase 26
 
-- **Migration 012_campaign_ref_role.sql** dans Supabase SQL Editor avant de pull/redeploy. Ajoute `campaign_refs.role` + 2 index uniques partiels (un seul launch et un seul failed par campagne). Les campagnes existantes basculent en `role='body'` automatiquement via le DEFAULT.
+- **Migration 013_dashboard_is_shared.sql** dans Supabase SQL Editor avant de pull/redeploy. Ajoute `dashboards.is_shared` + index partiel pour la requête « tableaux partagés visibles dans cette école ». Les tableaux existants restent privés (DEFAULT false), comportement inchangé pour eux.
 
 ## Seed data temporaire en place — à cleaner mercredi/jeudi 2026-05-22 ou 23
 

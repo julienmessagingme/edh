@@ -69,16 +69,27 @@ export async function GET(
   const { data: dash } = await sb
     .from("dashboards")
     .select(
-      "id, created_by, school_slug, date_preset, date_from, date_to, campaign_id"
+      "id, created_by, school_slug, date_preset, date_from, date_to, campaign_id, is_shared"
     )
     .eq("id", id)
     .maybeSingle<DashboardRow>();
 
-  if (
-    !dash ||
-    dash.created_by !== user.userId ||
-    dash.school_slug !== scope
-  ) {
+  if (!dash || dash.school_slug !== scope) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+  // Visibilité : owner OR is_shared OR lié à une campagne (les
+  // tableaux de campagne s'affichent à tous ceux qui voient la
+  // campagne, géré côté campagne). On accepte les 3 cas ici puisque
+  // l'API listing les filtre déjà en amont — c'est un garde-fou.
+  // Note : `is_shared` n'existe que sur les tableaux libres (campaign_id
+  // null) ; pour un tableau de campagne, la visibilité est gérée par
+  // les ACL de la campagne (cf. /campaigns/[id]/campaign-page-client).
+  const dashAny = dash as DashboardRow & { is_shared?: boolean };
+  const visible =
+    dashAny.created_by === user.userId ||
+    dashAny.is_shared === true ||
+    dashAny.campaign_id !== null;
+  if (!visible) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
   // Capture non-null pour que TS ne perde pas le narrowing à l'intérieur

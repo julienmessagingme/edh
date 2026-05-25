@@ -45,23 +45,49 @@ const PatchBody = z
       .nullable()
       .optional(),
     steps: z.array(StepSchema).max(50).optional(),
+    is_shared: z.boolean().optional(),
   })
   .refine((b) => Object.keys(b).length > 0, "empty patch");
 
-async function findOwned(
+/**
+ * Charge le dashboard et calcule visible + can_edit.
+ *   - visible  : owner OR is_shared
+ *   - can_edit : owner OR admin
+ * Renvoie null si pas dans la même école que le scope courant ou pas
+ * visible. */
+async function loadAccessible(
   id: string,
   userId: string
-): Promise<{ id: string } | null> {
+): Promise<{
+  id: string;
+  created_by: string;
+  is_shared: boolean;
+  can_edit: boolean;
+} | null> {
   const sb = getSupabase();
   const schoolSlug = await getCurrentSchoolSlugChecked();
   const { data } = await sb
     .from("dashboards")
-    .select("id, created_by, school_slug")
+    .select("id, created_by, school_slug, is_shared")
     .eq("id", id)
     .maybeSingle();
   if (!data) return null;
-  if (data.created_by !== userId || data.school_slug !== schoolSlug) return null;
-  return { id: data.id };
+  if (data.school_slug !== schoolSlug) return null;
+  const visible = data.created_by === userId || data.is_shared === true;
+  if (!visible) return null;
+
+  const { data: meRow } = await sb
+    .from("users")
+    .select("is_admin")
+    .eq("id", userId)
+    .maybeSingle();
+  const isAdmin = !!meRow?.is_admin;
+  return {
+    id: data.id,
+    created_by: data.created_by,
+    is_shared: data.is_shared,
+    can_edit: isAdmin || data.created_by === userId,
+  };
 }
 
 export async function GET(
@@ -75,15 +101,15 @@ export async function GET(
     return NextResponse.json({ error: "unauth" }, { status: 401 });
   }
   const { id } = await ctx.params;
-  const owned = await findOwned(id, user.userId);
-  if (!owned) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const access = await loadAccessible(id, user.userId);
+  if (!access) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const sb = getSupabase();
   const [dashRes, stepsRes] = await Promise.all([
     sb
       .from("dashboards")
       .select(
-        "id, school_slug, created_by, name, type, date_preset, date_from, date_to, created_at, updated_at, campaign_id"
+        "id, school_slug, created_by, name, type, date_preset, date_from, date_to, created_at, updated_at, campaign_id, is_shared"
       )
       .eq("id", id)
       .single(),
@@ -142,6 +168,7 @@ export async function GET(
 
   const dashboard: DashboardWithSteps = {
     ...dashRes.data,
+    can_edit: access.can_edit,
     steps,
   };
   return NextResponse.json({ dashboard });
@@ -165,8 +192,10 @@ export async function PATCH(
       { status: 400 }
     );
   }
-  const owned = await findOwned(id, user.userId);
-  if (!owned) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const access = await loadAccessible(id, user.userId);
+  if (!access) return NextResponse.json({ error: "not found" }, { status: 404 });
+  if (!access.can_edit)
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const sb = getSupabase();
 
@@ -176,6 +205,8 @@ export async function PATCH(
     fields.date_preset = parsed.data.date_preset;
   if (parsed.data.date_from !== undefined) fields.date_from = parsed.data.date_from;
   if (parsed.data.date_to !== undefined) fields.date_to = parsed.data.date_to;
+  if (parsed.data.is_shared !== undefined)
+    fields.is_shared = parsed.data.is_shared;
 
   if (Object.keys(fields).length > 1) {
     const { error } = await sb.from("dashboards").update(fields).eq("id", id);
@@ -224,8 +255,10 @@ export async function DELETE(
     return NextResponse.json({ error: "unauth" }, { status: 401 });
   }
   const { id } = await ctx.params;
-  const owned = await findOwned(id, user.userId);
-  if (!owned) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const access = await loadAccessible(id, user.userId);
+  if (!access) return NextResponse.json({ error: "not found" }, { status: 404 });
+  if (!access.can_edit)
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const { error } = await getSupabase().from("dashboards").delete().eq("id", id);
   if (error)

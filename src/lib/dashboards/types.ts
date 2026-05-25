@@ -37,6 +37,16 @@ export interface Dashboard {
    *  `POST /api/campaigns`). Exclu de la liste "Mes tableaux", édité
    *  uniquement via `/campaigns/[campaign_id]`. */
   campaign_id: string | null;
+  /** Partagé avec l'école : visible par tous les users qui ont accès à
+   *  l'école, éditable uniquement par l'auteur (ou admin). Ignoré pour
+   *  les tableaux liés à une campagne (héritent du `is_shared` de la
+   *  campagne). */
+  is_shared: boolean;
+  /** true ssi l'utilisateur courant est auteur ou admin. Annoté par
+   *  l'API GET, jamais persisté en DB. Permet au builder de désactiver
+   *  l'auto-save quand l'utilisateur consulte un tableau partagé qui
+   *  n'est pas le sien. */
+  can_edit?: boolean;
 }
 
 export interface DashboardWithSteps extends Dashboard {

@@ -701,9 +701,35 @@ export function BuilderClient({
                 ← Campagnes
               </Button>
             ) : (
-              <Button variant="outline" onClick={deleteDashboard}>
-                <Trash2 className="h-4 w-4 mr-1" /> Supprimer
-              </Button>
+              <>
+                {dashboard.can_edit !== false && (
+                  <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={dashboard.is_shared}
+                      onChange={(e) => {
+                        const next = e.target.checked;
+                        setDashboard((d) =>
+                          d ? { ...d, is_shared: next } : d
+                        );
+                        persist({ is_shared: next });
+                      }}
+                      className="h-3.5 w-3.5"
+                    />
+                    Partagé avec l&apos;école
+                  </label>
+                )}
+                {dashboard.can_edit === false && (
+                  <span className="text-xs text-zinc-500 italic">
+                    Lecture seule (tableau partagé par un autre utilisateur)
+                  </span>
+                )}
+                {dashboard.can_edit !== false && (
+                  <Button variant="outline" onClick={deleteDashboard}>
+                    <Trash2 className="h-4 w-4 mr-1" /> Supprimer
+                  </Button>
+                )}
+              </>
             )}
           </div>
         </header>

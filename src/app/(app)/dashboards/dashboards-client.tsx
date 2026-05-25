@@ -5,7 +5,7 @@ import Link from "next/link";
 import { toast, Toaster } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Trash2 } from "lucide-react";
+import { Trash2, Share2, Lock } from "lucide-react";
 import { SubNavStats } from "../sub-nav-stats";
 import { NewDashboardDialog } from "./new-dashboard-dialog";
 import type { Dashboard } from "@/lib/dashboards/types";
@@ -61,29 +61,48 @@ export function DashboardsClient() {
         </p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {dashboards.map((d) => (
-            <Card key={d.id} className="p-4">
-              <div className="flex items-start justify-between gap-2">
-                <Link
-                  href={`/dashboards/${d.id}`}
-                  className="flex-1 min-w-0 hover:underline"
-                >
-                  <h3 className="font-medium truncate">{d.name}</h3>
-                  <p className="text-xs text-zinc-500 mt-1">
-                    Funnel · modifié le{" "}
-                    {new Date(d.updated_at).toLocaleDateString("fr-FR")}
-                  </p>
-                </Link>
-                <button
-                  onClick={() => remove(d)}
-                  className="text-zinc-400 hover:text-red-600 p-1"
-                  aria-label="Supprimer"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            </Card>
-          ))}
+          {dashboards.map((d) => {
+            const typeLabel = d.type === "pie" ? "Pie chart" : "Funnel";
+            return (
+              <Card key={d.id} className="p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <Link
+                    href={`/dashboards/${d.id}`}
+                    className="flex-1 min-w-0 hover:underline"
+                  >
+                    <h3 className="font-medium truncate">{d.name}</h3>
+                    <p className="text-xs text-zinc-500 mt-1 flex items-center gap-1.5">
+                      <span>{typeLabel}</span>
+                      <span>·</span>
+                      {d.is_shared ? (
+                        <span className="inline-flex items-center gap-1">
+                          <Share2 className="h-3 w-3" /> Partagé
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1">
+                          <Lock className="h-3 w-3" /> Privé
+                        </span>
+                      )}
+                      <span>·</span>
+                      <span>
+                        modifié le{" "}
+                        {new Date(d.updated_at).toLocaleDateString("fr-FR")}
+                      </span>
+                    </p>
+                  </Link>
+                  {d.can_edit && (
+                    <button
+                      onClick={() => remove(d)}
+                      className="text-zinc-400 hover:text-red-600 p-1"
+                      aria-label="Supprimer"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
 

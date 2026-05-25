@@ -11,6 +11,10 @@ const PostBody = z.object({
   /** Type de viz à la création. Défaut 'funnel' pour compat avec les
    *  anciens clients qui n'envoient pas ce champ. */
   type: z.enum(["funnel", "pie"]).optional(),
+  /** Partagé avec l'école (visible par tous les users de l'école).
+   *  Défaut false (privé). Ne s'applique qu'aux tableaux libres ;
+   *  pour un tableau de campagne, la visibilité vient de la campagne. */
+  is_shared: z.boolean().optional(),
 });
 
 export async function GET() {
@@ -23,20 +27,32 @@ export async function GET() {
 
   const schoolSlug = await getCurrentSchoolSlugChecked();
   const sb = getSupabase();
+  // Visibilité : mes tableaux + ceux partagés par d'autres pour cette
+  // école. Exclut les tableaux liés à une campagne (édités via /campaigns).
   const { data, error } = await sb
     .from("dashboards")
     .select(
-      "id, school_slug, created_by, name, type, date_preset, date_from, date_to, created_at, updated_at, campaign_id"
+      "id, school_slug, created_by, name, type, date_preset, date_from, date_to, created_at, updated_at, campaign_id, is_shared"
     )
-    .eq("created_by", user.userId)
     .eq("school_slug", schoolSlug)
-    // Les tableaux liés à une campagne (Phase 21+) ne s'affichent pas
-    // dans Mes tableaux : ils s'éditent uniquement via /campaigns/[id].
     .is("campaign_id", null)
+    .or(`created_by.eq.${user.userId},is_shared.eq.true`)
     .order("updated_at", { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ dashboards: data ?? [] });
+  // Annote chaque dashboard avec can_edit (owner ou admin).
+  const { data: meRow } = await sb
+    .from("users")
+    .select("is_admin")
+    .eq("id", user.userId)
+    .maybeSingle();
+  const isAdmin = !!meRow?.is_admin;
+  const dashboards = (data ?? []).map((d) => ({
+    ...d,
+    can_edit: isAdmin || d.created_by === user.userId,
+  }));
+
+  return NextResponse.json({ dashboards });
 }
 
 export async function POST(req: Request) {
@@ -61,6 +77,7 @@ export async function POST(req: Request) {
       created_by: user.userId,
       name: parsed.data.name,
       type: parsed.data.type ?? "funnel",
+      is_shared: parsed.data.is_shared ?? false,
     })
     .select("id")
     .single();
