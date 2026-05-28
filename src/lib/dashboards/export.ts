@@ -161,11 +161,79 @@ export async function exportFunnelToPDF(args: {
     import("jspdf"),
   ]);
 
-  const dataUrl = await toPng(element, {
-    backgroundColor: "#ffffff",
-    pixelRatio: 2,
-    cacheBust: true,
-  });
+  // L'overflow horizontal dans la sous-arbre (notamment le wrapper
+  // `<div class="overflow-x-auto">` autour du tableau funnel) tronque
+  // la capture html-to-image à la zone visible. Avant la capture, on
+  // neutralise tous les overflow + on note les scrollWidth max pour
+  // dimensionner la capture, puis on restore l'état DOM.
+  const restoreFns: Array<() => void> = [];
+  const setStyle = (
+    el: HTMLElement,
+    prop: keyof CSSStyleDeclaration,
+    value: string
+  ) => {
+    const prev = (el.style[prop] as string | undefined) ?? "";
+    (el.style[prop] as string) = value;
+    restoreFns.push(() => {
+      (el.style[prop] as string) = prev;
+    });
+  };
+
+  // 1. Neutralise tous les overflow descendants (table wrapper inclus).
+  const allEls = Array.from(
+    element.querySelectorAll<HTMLElement>("*")
+  );
+  for (const el of allEls) {
+    const cs = window.getComputedStyle(el);
+    if (
+      cs.overflow !== "visible" ||
+      cs.overflowX !== "visible" ||
+      cs.overflowY !== "visible"
+    ) {
+      setStyle(el, "overflow", "visible");
+      setStyle(el, "overflowX", "visible");
+      setStyle(el, "overflowY", "visible");
+    }
+  }
+
+  // 2. Mesure la largeur "réelle" maintenant que les scroll containers
+  //    sont libérés : le scrollWidth max de tout descendant donne la
+  //    largeur de contenu finale qu'on veut capturer.
+  let widestContent = element.scrollWidth;
+  for (const el of allEls) {
+    if (el.scrollWidth > widestContent) widestContent = el.scrollWidth;
+  }
+  const fullWidth = Math.max(widestContent, element.clientWidth);
+
+  // 3. Force la root à occuper toute la largeur de contenu pour que le
+  //    clone ne se reflow pas plus étroitement.
+  setStyle(element, "width", `${fullWidth}px`);
+  setStyle(element, "maxWidth", "none");
+  // Laisse le navigateur recalculer le layout avec les overrides ci-dessus.
+  await new Promise((r) => requestAnimationFrame(() => r(null)));
+
+  const fullHeight = Math.max(element.scrollHeight, element.clientHeight);
+
+  let dataUrl: string;
+  try {
+    dataUrl = await toPng(element, {
+      backgroundColor: "#ffffff",
+      pixelRatio: 2,
+      cacheBust: true,
+      width: fullWidth,
+      height: fullHeight,
+      canvasWidth: fullWidth,
+      canvasHeight: fullHeight,
+      style: {
+        overflow: "visible",
+        width: `${fullWidth}px`,
+        maxWidth: "none",
+      },
+    });
+  } finally {
+    // Restore le DOM dans son état initial (ordre inverse important).
+    for (let i = restoreFns.length - 1; i >= 0; i--) restoreFns[i]();
+  }
 
   // Récupère les dimensions natives de l'image pour calculer le ratio.
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
