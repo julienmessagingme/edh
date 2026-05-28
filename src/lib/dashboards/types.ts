@@ -100,6 +100,9 @@ export interface ComputedStep {
   /** Breakdown fusionné des refs (par pays, sommé). NULL si pas de
    *  coût Meta sur l'étape. */
   meta_breakdown?: MetaCostBreakdownItem[];
+  /** Renseigné uniquement pour les steps synthétiques injectés en tête
+   *  ('launch') et en queue ('failed') du funnel d'une campagne. */
+  synth_role?: "launch" | "failed";
 }
 
 /**

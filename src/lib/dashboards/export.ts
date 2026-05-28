@@ -1,5 +1,9 @@
 import * as XLSX from "xlsx";
-import type { ComputedStep, DashboardType } from "./types";
+import type {
+  ComputedStep,
+  DashboardType,
+  CampaignCostSummary,
+} from "./types";
 import { compactStepLabel } from "./types";
 
 // jsPDF + helvetica encode en WinAnsi → U+2192 "→" devient garbage ("!'").
@@ -36,8 +40,16 @@ export function exportFunnelToExcel(args: {
   toDate: string;
   steps: ComputedStep[];
   type?: DashboardType;
+  campaignSummary?: CampaignCostSummary | null;
 }) {
-  const { dashboardName, fromDate, toDate, steps, type = "funnel" } = args;
+  const {
+    dashboardName,
+    fromDate,
+    toDate,
+    steps,
+    type = "funnel",
+    campaignSummary = null,
+  } = args;
   const rows: Array<Array<string | number>> = [];
 
   rows.push(["Tableau", dashboardName]);
@@ -77,13 +89,28 @@ export function exportFunnelToExcel(args: {
     return;
   }
 
-  // Funnel (défaut)
-  const first = steps[0]?.count ?? 0;
-  const hasMetaCost = steps.some(
-    (s) => s.meta_cost_eur != null && s.meta_cost_eur > 0
-  );
+  // Funnel (défaut). Le step "Échec" synthétique est sorti du flux principal :
+  // son volume est ajouté en sous-ligne du Lancement (cohérent avec l'UI table).
+  const failedStep = steps.find((s) => s.synth_role === "failed") ?? null;
+  const visibleSteps = steps.filter((s) => s.synth_role !== "failed");
+  const first = visibleSteps[0]?.count ?? 0;
+  // Substitue le coût NET (lancement − failed) au brut pour le step Lancement
+  // quand la campagne a un failed configuré. Aligne le tableau avec la
+  // synthèse "COÛT NET META" en haut du builder.
+  const useNetForLaunch =
+    campaignSummary !== null && campaignSummary.failed !== null;
+  const stepCost = (s: ComputedStep): number | null => {
+    if (useNetForLaunch && s.synth_role === "launch") {
+      return campaignSummary?.net_cost_eur ?? null;
+    }
+    return s.meta_cost_eur ?? null;
+  };
+  const hasMetaCost = visibleSteps.some((s) => {
+    const c = stepCost(s);
+    return c != null && c > 0;
+  });
   const totalMetaCost = hasMetaCost
-    ? steps.reduce((acc, s) => acc + (s.meta_cost_eur ?? 0), 0)
+    ? visibleSteps.reduce((acc, s) => acc + (stepCost(s) ?? 0), 0)
     : 0;
 
   const header: Array<string | number> = [
@@ -95,8 +122,8 @@ export function exportFunnelToExcel(args: {
   if (hasMetaCost) header.push("Coût Meta (EUR)");
   rows.push(header);
 
-  steps.forEach((s, i) => {
-    const prev = i > 0 ? steps[i - 1].count : null;
+  visibleSteps.forEach((s, i) => {
+    const prev = i === 0 ? null : visibleSteps[i - 1].count;
     const convPrev =
       prev !== null && prev > 0 ? pct(s.count, prev) : i === 0 ? "—" : "—";
     const convFirst =
@@ -106,11 +133,34 @@ export function exportFunnelToExcel(args: {
     }`;
     const row: Array<string | number> = [label, s.count, convPrev, convFirst];
     if (hasMetaCost) {
-      // Nombre natif Excel pour permettre les calculs/format conditionnels
-      // côté tableur. Vide si pas de coût pour cette étape.
-      row.push(s.meta_cost_eur != null ? Number(s.meta_cost_eur.toFixed(4)) : "");
+      const c = stepCost(s);
+      row.push(c != null ? Number(c.toFixed(4)) : "");
     }
     rows.push(row);
+
+    // Sous-lignes "failed" + "envois réussis" sous le step Lancement.
+    if (s.synth_role === "launch" && failedStep && failedStep.available) {
+      const failedLabel = failedStep.label.replace(/^Échec\s*:\s*/, "");
+      const failedRow: Array<string | number> = [
+        `    − ${failedLabel} (failed WhatsApp)`,
+        failedStep.count,
+        s.count > 0
+          ? `${((failedStep.count / s.count) * 100).toFixed(1)}%`
+          : "",
+        "",
+      ];
+      if (hasMetaCost) failedRow.push("");
+      rows.push(failedRow);
+      const netRow: Array<string | number> = [
+        `    = Envois réussis (net)`,
+        s.count - failedStep.count,
+        "",
+        "",
+      ];
+      if (hasMetaCost) netRow.push("");
+      rows.push(netRow);
+    }
+
     if (s.refs.length > 1) {
       s.refs.forEach((r) => {
         const subRow: Array<string | number> = [

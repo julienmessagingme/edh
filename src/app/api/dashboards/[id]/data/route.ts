@@ -132,6 +132,28 @@ export async function GET(
 
   const refRows = (refsData ?? []) as RefRow[];
 
+  // Si le dashboard est lié à une campagne, on récupère ses refs maintenant
+  // pour pouvoir inclure les event_ns du launch/failed dans mmLabels — sinon
+  // un funnel constitué uniquement d'URLs (zéro mm_event en step) verrait
+  // son bloc campaign_summary skippé faute de label disponible.
+  type CampaignRefRow = {
+    step_type: StepType;
+    event_ns: string | null;
+    redirect_event_id: string | null;
+    event_school_slug: string | null;
+    role: "launch" | "body" | "failed";
+  };
+  let campaignRefs: CampaignRefRow[] = [];
+  if (dash.campaign_id) {
+    const { data: cRefs } = await sb
+      .from("campaign_refs")
+      .select(
+        "step_type, event_ns, redirect_event_id, event_school_slug, role"
+      )
+      .eq("campaign_id", dash.campaign_id);
+    campaignRefs = (cRefs ?? []) as CampaignRefRow[];
+  }
+
   // Pour chaque mm_event ref, l'école est event_school_slug en mode EDH,
   // sinon le school_slug du dashboard. Pour les url_click on stocke par
   // redirect_event_id (uuid global) et on lira l'école côté redirect_events.
@@ -139,6 +161,20 @@ export async function GET(
   const mmKeys = new Set<MmKey>();
   for (const r of refRows) {
     if (r.step_type === "mm_event" && r.event_ns) {
+      const sch = isEdh ? r.event_school_slug : dashSchool;
+      if (sch) mmKeys.add(`${sch}|${r.event_ns}`);
+    }
+  }
+  // Seed mmKeys avec les events launch/failed de la campagne pour garantir
+  // qu'on charge bien leur label, même si la campagne n'a aucun mm_event
+  // drag-and-droppé en step (cas d'un funnel 100% URL clicks).
+  for (const r of campaignRefs) {
+    if (
+      (r.role === "launch" || r.role === "failed") &&
+      r.step_type === "mm_event" &&
+      r.event_ns
+    ) {
+      // EDH multi-école : event_school_slug peut différer du dashSchool.
       const sch = isEdh ? r.event_school_slug : dashSchool;
       if (sch) mmKeys.add(`${sch}|${r.event_ns}`);
     }
@@ -396,26 +432,68 @@ export async function GET(
     })
   );
 
+  // --- Injection launch/failed comme steps synthétiques (Phase 25.5) ---
+  // Le dashboard ne stocke que les "body steps" en DB. Pour l'affichage du
+  // funnel d'une campagne, on préfixe la step launch et on suffixe la step
+  // failed, pour avoir un funnel complet "Envoyés → … → Échoués" dans le
+  // chart et la table. Réutilise computeRef pour avoir le count + coût Meta.
+  if (dash.campaign_id) {
+    const launchRefCfg = campaignRefs.find((r) => r.role === "launch");
+    const failedRefCfg = campaignRefs.find((r) => r.role === "failed");
+
+    const synthStep = async (
+      cfg: CampaignRefRow,
+      labelPrefix: string,
+      role: "launch" | "failed"
+    ): Promise<ComputedStep | null> => {
+      if (cfg.step_type !== "mm_event" || !cfg.event_ns) return null;
+      const synthRefRow: RefRow = {
+        id: `synth-${cfg.role}`,
+        step_id: `synth-${cfg.role}`,
+        ref_position: 0,
+        step_type: "mm_event",
+        event_ns: cfg.event_ns,
+        redirect_event_id: null,
+        event_school_slug: cfg.event_school_slug,
+      };
+      const cr = await computeRef(synthRefRow);
+      return {
+        position: 0, // renuméroté en bas
+        label: `${labelPrefix} : ${cr.label}`,
+        count: cr.available ? cr.count : 0,
+        available: cr.available,
+        refs: [cr],
+        meta_cost_eur: cr.meta_cost_eur ?? null,
+        ...(cr.meta_breakdown ? { meta_breakdown: cr.meta_breakdown } : {}),
+        synth_role: role,
+      };
+    };
+
+    const launchStep = launchRefCfg
+      ? await synthStep(launchRefCfg, "Lancement", "launch")
+      : null;
+    const failedStep = failedRefCfg
+      ? await synthStep(failedRefCfg, "Échec", "failed")
+      : null;
+
+    if (launchStep) computed.unshift(launchStep);
+    if (failedStep) computed.push(failedStep);
+    // Renumérote pour avoir 1..N continu (sinon le bar chart / table affiche
+    // les positions originales et c'est confus).
+    computed.forEach((s, i) => {
+      s.position = i + 1;
+    });
+  }
+
   // --- Synthèse campagne (Phase 25) ---
   // Si le dashboard est lié à une campagne avec un launch défini, on
   // calcule le coût Meta brut (lancement), le failed éventuel, et le
   // net (= lancement scaled par le ratio des envois réussis).
+  // Réutilise les `campaignRefs` chargés plus haut pour le seed mmKeys.
   let campaignSummary: CampaignCostSummary | null = null;
   if (dash.campaign_id) {
-    const { data: campaignRefs } = await sb
-      .from("campaign_refs")
-      .select(
-        "step_type, event_ns, event_school_slug, role"
-      )
-      .eq("campaign_id", dash.campaign_id)
-      .in("role", ["launch", "failed"]);
-
-    const launchRef = (campaignRefs ?? []).find(
-      (r) => r.role === "launch"
-    );
-    const failedRef = (campaignRefs ?? []).find(
-      (r) => r.role === "failed"
-    );
+    const launchRef = campaignRefs.find((r) => r.role === "launch");
+    const failedRef = campaignRefs.find((r) => r.role === "failed");
 
     if (launchRef && launchRef.step_type === "mm_event" && launchRef.event_ns) {
       const launchSchool = isEdh

@@ -22,15 +22,24 @@ interface FunnelDataPoint {
  * Stays light to fit the rest of the dashboard while still letting the
  * purple glow pop.
  */
-export function FancyFunnelChart({ steps }: { steps: ComputedStep[] }) {
+export function FancyFunnelChart({ steps: rawSteps }: { steps: ComputedStep[] }) {
   const [hovered, setHovered] = useState<
     { index: number; x: number; y: number } | null
   >(null);
 
+  if (rawSteps.length === 0) return null;
+  // Le step "Échec" synthétique est traité séparément (badge sur le launch
+  // dans le chart en barres, sous-ligne dans la table) — il n'apparaît pas
+  // ici comme une étape distincte du funnel.
+  const steps = rawSteps.filter((s) => s.synth_role !== "failed");
   if (steps.length === 0) return null;
 
+  // Tronque les labels du funnel à ~28 chars pour ne pas déborder du card.
+  const truncate = (s: string, max = 28): string =>
+    s.length <= max ? s : s.slice(0, max - 1) + "…";
+
   const data: FunnelDataPoint[] = steps.map((s) => ({
-    key: `${s.position + 1}. ${s.label}`,
+    key: `${s.position + 1}. ${truncate(s.label)}`,
     data: s.count,
   }));
 
