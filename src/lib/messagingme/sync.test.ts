@@ -12,8 +12,20 @@ beforeEach(() => {
   process.env.INTERNAL_API_KEY = "x";
 });
 
+function occ(id: number) {
+  return {
+    id,
+    user_ns: "u",
+    event_ns: "ns1",
+    text_value: "",
+    price_value: "0",
+    number_value: 1,
+    created_at: "2026-04-01T00:00:00Z",
+  };
+}
+
 describe("syncSchool watermark", () => {
-  it("only inserts occurrences with id > watermark and stops at first older id", async () => {
+  it("resumes from the watermark via start_id and inserts every page to the tail", async () => {
     const clientMod = await import("@/lib/messagingme/client");
     vi.spyOn(clientMod, "listEvents").mockResolvedValue([
       {
@@ -25,39 +37,16 @@ describe("syncSchool watermark", () => {
         number_label: "",
       },
     ]);
-    vi.spyOn(clientMod, "iterOccurrences").mockImplementation(async function* () {
-      yield [
-        {
-          id: 100,
-          user_ns: "u",
-          event_ns: "ns1",
-          text_value: "",
-          price_value: "0",
-          number_value: 1,
-          created_at: "2026-04-01T00:00:00Z",
-        },
-        {
-          id: 99,
-          user_ns: "u",
-          event_ns: "ns1",
-          text_value: "",
-          price_value: "0",
-          number_value: 1,
-          created_at: "2026-03-31T00:00:00Z",
-        },
-      ];
-      yield [
-        {
-          id: 98,
-          user_ns: "u",
-          event_ns: "ns1",
-          text_value: "",
-          price_value: "0",
-          number_value: 1,
-          created_at: "2026-03-30T00:00:00Z",
-        },
-      ];
-    });
+
+    // The API yields ascending pages; new occurrences are on the LAST page.
+    // The buggy version broke on page 1 and never saw 200/201. Every row must
+    // now reach the DB.
+    const iterSpy = vi
+      .spyOn(clientMod, "iterOccurrences")
+      .mockImplementation(async function* () {
+        yield [occ(100), occ(150)];
+        yield [occ(200), occ(201)];
+      });
 
     const inserts: { id: number }[] = [];
     const upserts: { table: string; row: Record<string, unknown> }[] = [];
@@ -103,19 +92,87 @@ describe("syncSchool watermark", () => {
 
     const { syncSchool } = await import("./sync");
     await syncSchool(
-      { slug: "efap", name: "EFAP", tokenEnv: "MM_TOKEN_EFAP" },
+      {
+        slug: "efap",
+        name: "EFAP",
+        tokenEnv: "MM_TOKEN_EFAP",
+        vectorStoreEnv: "OPENAI_VS_EFAP",
+        logo: "/logos/efap.png",
+      },
       "tok"
     );
 
-    // Watermark was 99 → only id 100 should be inserted, iteration must stop
-    // at id 99 (id 98 should never reach the DB).
-    expect(inserts.map((r) => r.id)).toEqual([100]);
+    // Watermark 99 must be passed straight through as the exclusive start_id
+    // (not 99 + 1), and every yielded occurrence ingested — no early break.
+    expect(iterSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      "ns1",
+      99
+    );
+    expect(inserts.map((r) => r.id)).toEqual([100, 150, 200, 201]);
 
-    // Watermark must have been bumped to 100.
+    // Watermark advanced to the max ingested id.
     const stateUpserts = upserts.filter((u) => u.table === "mm_sync_state");
     const watermarkUpdate = stateUpserts.find(
-      (u) => u.row.last_occurrence_id === 100
+      (u) => u.row.last_occurrence_id === 201
     );
     expect(watermarkUpdate).toBeDefined();
+  });
+
+  it("does a full scan (start_id undefined) when there is no watermark", async () => {
+    const clientMod = await import("@/lib/messagingme/client");
+    vi.spyOn(clientMod, "listEvents").mockResolvedValue([
+      {
+        name: "a",
+        event_ns: "ns1",
+        description: "",
+        text_label: "",
+        price_label: "",
+        number_label: "",
+      },
+    ]);
+    const iterSpy = vi
+      .spyOn(clientMod, "iterOccurrences")
+      .mockImplementation(async function* () {
+        yield [occ(1), occ(2)];
+      });
+
+    const { getSupabase } = await import("@/lib/supabase/service");
+    (getSupabase as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue({
+      from: (t: string) => {
+        if (t === "mm_sync_state") {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  maybeSingle: () =>
+                    Promise.resolve({ data: null, error: null }),
+                }),
+              }),
+            }),
+            upsert: () => Promise.resolve({ error: null }),
+          };
+        }
+        return { upsert: () => Promise.resolve({ error: null }) };
+      },
+    });
+
+    const { syncSchool } = await import("./sync");
+    await syncSchool(
+      {
+        slug: "efap",
+        name: "EFAP",
+        tokenEnv: "MM_TOKEN_EFAP",
+        vectorStoreEnv: "OPENAI_VS_EFAP",
+        logo: "/logos/efap.png",
+      },
+      "tok"
+    );
+
+    expect(iterSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      "ns1",
+      undefined
+    );
   });
 });

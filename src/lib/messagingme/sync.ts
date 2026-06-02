@@ -1,5 +1,5 @@
 import { getSupabase } from "@/lib/supabase/service";
-import { listEvents, iterOccurrences, MmOccurrence } from "./client";
+import { listEvents, iterOccurrences } from "./client";
 import { env } from "@/lib/env";
 import { SCHOOLS, getSchoolToken, type School } from "@/lib/schools";
 
@@ -128,47 +128,37 @@ async function syncEventOccurrences(
 
   let maxIngested = watermark;
 
-  // The MM API returns occurrences ordered most-recent-id first per page,
-  // and pages descend in time. We walk pages, collecting each row whose id
-  // is strictly greater than the watermark. As soon as we hit an id <=
-  // watermark we stop : everything older has already been ingested.
-  // CRITICAL : we must INSERT the items collected before the break, then
-  // exit the outer loop. A direct `break outer` would silently drop the
-  // partial batch.
-  for await (const batch of iterOccurrences({ token, base }, eventNs)) {
-    const fresh: MmOccurrence[] = [];
-    let reachedWatermark = false;
-    for (const occ of batch) {
-      if (occ.id <= watermark) {
-        reachedWatermark = true;
-        break;
-      }
-      fresh.push(occ);
-      if (occ.id > maxIngested) maxIngested = occ.id;
+  // The MM API returns occurrences in ascending id order, so new ones land on
+  // the LAST pages. We resume from the watermark via start_id (an EXCLUSIVE
+  // cursor : id > watermark), walk every page to the tail, and upsert each.
+  // We pass `watermark` directly (not watermark + 1) precisely because the
+  // bound is exclusive. When watermark is 0 we omit start_id for a full scan.
+  const startId = watermark > 0 ? watermark : undefined;
+  for await (const batch of iterOccurrences({ token, base }, eventNs, startId)) {
+    // Use upsert (not insert) so a transient failure mid-pagination doesn't
+    // leave us stuck : retrying re-fetches overlapping rows, and upsert with
+    // ignoreDuplicates makes those re-inserts a no-op on the (school_slug, id)
+    // PK. The watermark is only persisted at the end, so an error here means
+    // we simply re-scan from the old watermark next run — no gaps.
+    const { error } = await sb
+      .from("mm_occurrences")
+      .upsert(
+        batch.map((o) => ({
+          id: o.id,
+          school_slug: schoolSlug,
+          event_ns: o.event_ns,
+          user_ns: o.user_ns,
+          text_value: o.text_value,
+          price_value: parsePriceValue(o.price_value),
+          number_value: o.number_value,
+          occurred_at: o.created_at,
+        })),
+        { onConflict: "school_slug,id", ignoreDuplicates: true }
+      );
+    if (error) throw error;
+    for (const o of batch) {
+      if (o.id > maxIngested) maxIngested = o.id;
     }
-    if (fresh.length > 0) {
-      // Use upsert (not insert) so a transient failure mid-pagination
-      // doesn't leave us unable to resume : retrying re-fetches the same
-      // top-of-page rows, and upsert with ignoreDuplicates makes those
-      // re-inserts a no-op on the (school_slug, id) PK.
-      const { error } = await sb
-        .from("mm_occurrences")
-        .upsert(
-          fresh.map((o) => ({
-            id: o.id,
-            school_slug: schoolSlug,
-            event_ns: o.event_ns,
-            user_ns: o.user_ns,
-            text_value: o.text_value,
-            price_value: parsePriceValue(o.price_value),
-            number_value: o.number_value,
-            occurred_at: o.created_at,
-          })),
-          { onConflict: "school_slug,id", ignoreDuplicates: true }
-        );
-      if (error) throw error;
-    }
-    if (reachedWatermark) break;
   }
 
   if (maxIngested > watermark) {

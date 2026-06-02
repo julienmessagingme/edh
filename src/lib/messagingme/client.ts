@@ -78,20 +78,34 @@ export async function listEvents(opts: ClientOpts): Promise<MmEvent[]> {
   return all;
 }
 
+/** Max occurrences per page — the API rejects anything above 100 (HTTP 422). */
+const OCC_PAGE_SIZE = 100;
+
 /**
- * Iterates occurrences of an event, page by page. The API returns rows
- * ordered most-recent first by default — the sync logic relies on this to
- * stop early once it encounters an id <= last watermark.
+ * Iterates occurrences of an event in ascending id order, using `start_id`
+ * as an EXCLUSIVE cursor (the API returns rows with id strictly greater than
+ * start_id). Pass `startId` to resume from a watermark; omit it for a full
+ * scan from the beginning.
+ *
+ * The API returns rows oldest-first, so new occurrences land on the LAST
+ * pages — never break early. We advance the cursor to the largest id seen in
+ * each page and stop once a page comes back short (or empty), which means we
+ * reached the tail.
  */
 export async function* iterOccurrences(
   opts: ClientOpts,
-  eventNs: string
+  eventNs: string,
+  startId?: number
 ): AsyncGenerator<MmOccurrence[], void, void> {
-  let page = 1;
+  let cursor = startId;
+  let iterations = 0;
   while (true) {
-    const url = `${opts.base}/flow/custom-events/data?event_ns=${encodeURIComponent(
-      eventNs
-    )}&page=${page}`;
+    const params = new URLSearchParams({
+      event_ns: eventNs,
+      limit: String(OCC_PAGE_SIZE),
+    });
+    if (cursor != null) params.set("start_id", String(cursor));
+    const url = `${opts.base}/flow/custom-events/data?${params.toString()}`;
     const r = await fetchWithRetry(url, {
       headers: {
         Authorization: `Bearer ${opts.token}`,
@@ -100,16 +114,26 @@ export async function* iterOccurrences(
     });
     if (!r.ok) {
       throw new Error(
-        `iterOccurrences failed: HTTP ${r.status} on event ${eventNs} page ${page}`
+        `iterOccurrences failed: HTTP ${r.status} on event ${eventNs} (start_id=${cursor ?? "none"})`
       );
     }
     const j = (await r.json()) as PaginatedResponse<MmOccurrence>;
-    yield j.data;
-    if (j.meta.current_page >= j.meta.last_page) break;
-    page++;
-    if (page > 5000) {
+    const batch = j.data;
+    if (batch.length === 0) break;
+    yield batch;
+
+    const maxId = batch.reduce((m, o) => (o.id > m ? o.id : m), batch[0].id);
+    // No-progress guard : if the cursor doesn't strictly advance the API is
+    // misbehaving — bail rather than loop forever.
+    if (cursor != null && maxId <= cursor) break;
+    cursor = maxId;
+
+    // A short page means we've consumed the tail.
+    if (batch.length < OCC_PAGE_SIZE) break;
+
+    if (++iterations > 100000) {
       throw new Error(
-        `iterOccurrences: pagination > 5000 pages on ${eventNs}, aborting`
+        `iterOccurrences: > 100000 pages on ${eventNs}, aborting`
       );
     }
   }
