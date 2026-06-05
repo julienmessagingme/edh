@@ -189,6 +189,13 @@ export function BuilderClient({
   const exportRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
 
+  // Miroir de can_edit pour le garde-fou de `persist` : un viewer en lecture
+  // seule (non-owner, typiquement un collègue ouvrant une campagne partagée)
+  // ne doit jamais déclencher de PATCH (sinon 403 + toast d'erreur). Mis à
+  // jour à chaque render (idempotent).
+  const canEditRef = useRef(true);
+  canEditRef.current = dashboard?.can_edit !== false;
+
   // Restore the persisted view choice on mount.
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -343,6 +350,9 @@ export function BuilderClient({
 
   const persist = useCallback(
     (body: Record<string, unknown>) => {
+      // Lecture seule : aucune écriture. Évite un PATCH 403 + toast pour un
+      // viewer non-owner (campagne partagée, tableau partagé par un autre).
+      if (canEditRef.current === false) return;
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(async () => {
         setSaving(true);
@@ -694,6 +704,11 @@ export function BuilderClient({
             {saving && (
               <span className="text-xs text-zinc-500">Enregistrement…</span>
             )}
+            {isCampaignMode && dashboard.can_edit === false && (
+              <span className="text-xs text-zinc-500 italic">
+                Lecture seule (campagne partagée par un autre utilisateur)
+              </span>
+            )}
             {isCampaignMode ? (
               <Button
                 variant="outline"
@@ -739,7 +754,8 @@ export function BuilderClient({
           <Input
             value={dashboard.name}
             onChange={(e) => updateName(e.target.value)}
-            className="text-lg font-semibold"
+            disabled={dashboard.can_edit === false}
+            className="text-lg font-semibold disabled:opacity-100 disabled:cursor-default"
             placeholder="Nom du tableau"
           />
           <div className="flex items-end gap-2 flex-wrap">
@@ -749,6 +765,7 @@ export function BuilderClient({
                 size="sm"
                 variant={dashboard.date_preset === p.key ? "default" : "outline"}
                 onClick={() => updatePreset(p.key)}
+                disabled={dashboard.can_edit === false}
               >
                 {p.label}
               </Button>
@@ -763,6 +780,7 @@ export function BuilderClient({
                 type="date"
                 value={dashboard.date_from ?? ""}
                 onChange={(e) => updateCustomDate("date_from", e.target.value)}
+                disabled={dashboard.can_edit === false}
                 className="w-40"
               />
             </div>
@@ -775,6 +793,7 @@ export function BuilderClient({
                 type="date"
                 value={dashboard.date_to ?? ""}
                 onChange={(e) => updateCustomDate("date_to", e.target.value)}
+                disabled={dashboard.can_edit === false}
                 className="w-40"
               />
             </div>

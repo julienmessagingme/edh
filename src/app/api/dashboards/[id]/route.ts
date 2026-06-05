@@ -51,8 +51,17 @@ const PatchBody = z
 
 /**
  * Charge le dashboard et calcule visible + can_edit.
- *   - visible  : owner OR is_shared
- *   - can_edit : owner OR admin
+ *   - visible  : owner OR is_shared OR lié à une campagne (campaign_id non
+ *     NULL). Les tableaux de campagne s'affichent à tous ceux qui voient la
+ *     campagne ; la visibilité réelle est gérée par les ACL de la campagne
+ *     (cf. `/campaigns/[id]` + GET `/api/campaigns/[id]`). Le flag
+ *     `dashboards.is_shared` est ignoré pour eux (cf. migration 013). On
+ *     aligne ici sur la route `/data` qui appliquait déjà cette règle — sans
+ *     ça, un non-owner ouvrant une campagne PARTAGÉE était renvoyé vers
+ *     « Mes tableaux » (404 sur le GET métadonnées avant même le /data).
+ *   - can_edit : owner OR admin (un tableau de campagne a
+ *     `created_by = campaign.created_by`, donc can_edit reflète bien les
+ *     droits d'édition de la campagne).
  * Renvoie null si pas dans la même école que le scope courant ou pas
  * visible. */
 async function loadAccessible(
@@ -68,12 +77,15 @@ async function loadAccessible(
   const schoolSlug = await getCurrentSchoolSlugChecked();
   const { data } = await sb
     .from("dashboards")
-    .select("id, created_by, school_slug, is_shared")
+    .select("id, created_by, school_slug, is_shared, campaign_id")
     .eq("id", id)
     .maybeSingle();
   if (!data) return null;
   if (data.school_slug !== schoolSlug) return null;
-  const visible = data.created_by === userId || data.is_shared === true;
+  const visible =
+    data.created_by === userId ||
+    data.is_shared === true ||
+    data.campaign_id !== null;
   if (!visible) return null;
 
   const { data: meRow } = await sb
