@@ -51,8 +51,8 @@ export function CampaignEditorDialog({
   const [isShared, setIsShared] = useState(false);
   const [palette, setPalette] = useState<Palette | null>(null);
 
-  /** paletteKey de l'event launch, ou null. */
-  const [launchKey, setLaunchKey] = useState<string | null>(null);
+  /** Set de paletteKeys des events de lancement (cumulés). */
+  const [launchKeys, setLaunchKeys] = useState<Set<string>>(new Set());
   /** Set de paletteKeys des briques body. */
   const [bodyKeys, setBodyKeys] = useState<Set<string>>(new Set());
   /** paletteKey de l'event failed, ou null. */
@@ -86,22 +86,22 @@ export function CampaignEditorDialog({
 
           // Dispatch des refs par rôle. paletteKeyOf retombe sur le bon
           // composite key qu'on utilise côté palette.
-          let l: string | null = null;
+          const l = new Set<string>();
           let f: string | null = null;
           const b = new Set<string>();
           for (const r of campaign.refs as CampaignRef[]) {
             const key = paletteKeyOf(r);
-            if (r.role === "launch") l = key;
+            if (r.role === "launch") l.add(key);
             else if (r.role === "failed") f = key;
             else b.add(key);
           }
-          setLaunchKey(l);
+          setLaunchKeys(l);
           setBodyKeys(b);
           setFailedKey(f);
         } else {
           setName("");
           setIsShared(false);
-          setLaunchKey(null);
+          setLaunchKeys(new Set());
           setBodyKeys(new Set());
           setFailedKey(null);
         }
@@ -141,17 +141,17 @@ export function CampaignEditorDialog({
   const failedCandidates = useMemo(() => {
     if (!palette) return [];
     return palette.mmEvents.filter(
-      (i) => i.ref_id !== launchKey && !bodyKeys.has(i.ref_id)
+      (i) => !launchKeys.has(i.ref_id) && !bodyKeys.has(i.ref_id)
     );
-  }, [palette, launchKey, bodyKeys]);
+  }, [palette, launchKeys, bodyKeys]);
 
   // Section 2 (body) : events MM + URLs, hors launch / failed.
   const bodyMm = useMemo(() => {
     if (!palette) return [];
     return palette.mmEvents.filter(
-      (i) => i.ref_id !== launchKey && i.ref_id !== failedKey
+      (i) => !launchKeys.has(i.ref_id) && i.ref_id !== failedKey
     );
-  }, [palette, launchKey, failedKey]);
+  }, [palette, launchKeys, failedKey]);
   const bodyUrls = useMemo(() => {
     if (!palette) return [];
     return palette.redirectEvents;
@@ -179,6 +179,15 @@ export function CampaignEditorDialog({
 
   function toggleBody(item: PaletteItem) {
     setBodyKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(item.ref_id)) next.delete(item.ref_id);
+      else next.add(item.ref_id);
+      return next;
+    });
+  }
+
+  function toggleLaunch(item: PaletteItem) {
+    setLaunchKeys((prev) => {
       const next = new Set(prev);
       if (next.has(item.ref_id)) next.delete(item.ref_id);
       else next.add(item.ref_id);
@@ -215,7 +224,7 @@ export function CampaignEditorDialog({
     setSaving(true);
     try {
       const refs = [
-        ...(launchKey ? [makeRefPayload(launchKey, "launch")] : []),
+        ...Array.from(launchKeys).map((k) => makeRefPayload(k, "launch")),
         ...Array.from(bodyKeys).map((k) => makeRefPayload(k, "body")),
         ...(failedKey ? [makeRefPayload(failedKey, "failed")] : []),
       ].filter(Boolean);
@@ -297,19 +306,31 @@ export function CampaignEditorDialog({
               </span>
             </div>
 
-            {/* Section 1 : Event de lancement */}
+            {/* Section 1 : Events de lancement (multi, cumulés) */}
             <SectionCard
               step={1}
-              title="Event de lancement"
-              hint="Optionnel. Event qui porte le numéro de tel des destinataires (text_label défini dans Smartlink). Sert au calcul du coût Meta."
+              title={`Events de lancement (${launchKeys.size} sélectionné${
+                launchKeys.size > 1 ? "s" : ""
+              })`}
+              hint="Optionnel. Events qui portent le numéro de tel des destinataires (text_label défini dans Smartlink). Plusieurs possibles : leurs volumes et coûts Meta se cumulent."
             >
-              <EventSelect
-                value={launchKey}
-                onChange={setLaunchKey}
-                items={launchCandidates}
-                placeholder="— Aucun event de lancement —"
-                emptyMessage="Aucun event porteur de tel disponible. Configurez `text_label` sur un event Smartlink."
-              />
+              {launchCandidates.length === 0 ? (
+                <p className="text-xs text-zinc-400 italic">
+                  Aucun event porteur de tel disponible. Configurez `text_label`
+                  sur un event Smartlink.
+                </p>
+              ) : (
+                <div className="border rounded h-[200px]">
+                  <RefList
+                    title={`Custom events MM porteurs (${launchCandidates.length})`}
+                    items={launchCandidates}
+                    selectedKeys={launchKeys}
+                    onToggle={toggleLaunch}
+                    searchActive={false}
+                    className="h-full"
+                  />
+                </div>
+              )}
             </SectionCard>
 
             {/* Section 2 : Briques du funnel */}

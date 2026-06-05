@@ -120,15 +120,25 @@ export interface ComputedStep {
  */
 export interface CampaignCostSummary {
   launch: {
+    /** Volume cumulé de TOUS les events de lancement. */
     count: number;
+    /** Coût Meta brut cumulé de tous les events de lancement. */
     cost_eur: number;
+    /** Breakdown par pays fusionné sur tous les events de lancement. */
     breakdown: MetaCostBreakdownItem[];
-    /** Label affichable de l'event de lancement (avec chip école en EDH). */
+    /** Label affichable du lancement (cumul : nom de l'event seul si un
+     *  seul, « Cumul de N events » sinon ; chip école en EDH). */
     label: string;
-    /** Identité brute de la ref launch, utile pour les selects inline
-     *  du builder (matcher la palette key + envoyer un PATCH). */
-    event_ns: string;
-    event_school_slug: string | null;
+    /** Détail par event de lancement (cumul, Phase 28.x). Au moins 1
+     *  élément quand la synthèse est renseignée. Sert aux selects inline
+     *  du builder (matcher la palette key + envoyer un PATCH) et à
+     *  l'affichage read-only quand plusieurs events sont cumulés. */
+    events: Array<{
+      event_ns: string;
+      event_school_slug: string | null;
+      label: string;
+      count: number;
+    }>;
   };
   failed: {
     count: number;

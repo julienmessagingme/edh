@@ -901,18 +901,12 @@ export function BuilderClient({
               // en haut, AVANT les étapes du funnel (c'est lui qui
               // déclenche tout). Le failed est rendu en bas via bottomSlot.
               campaignId && computed?.campaign_summary ? (
-                <CampaignRoleInline
-                  label="Event de lancement"
-                  role="launch"
+                <LaunchInline
+                  launch={computed.campaign_summary.launch}
                   campaignId={campaignId}
-                  currentEventNs={computed.campaign_summary.launch.event_ns}
-                  currentSchoolSlug={
-                    computed.campaign_summary.launch.event_school_slug
-                  }
                   items={palette.mmEvents.filter(
                     (p) => p.has_text_value === true
                   )}
-                  emptyMessage="Aucun event porteur de tel disponible."
                   onChanged={async () => {
                     await fetchData();
                     setLocalRefsBump((v) => v + 1);
@@ -1148,6 +1142,63 @@ function CampaignCostSummaryCard({
         </div>
       </div>
     </div>
+  );
+}
+
+/** Contrôle inline des events de LANCEMENT (cumul possible, Phase 28.x).
+ *  - 0 ou 1 event : select inline éditable (set / swap / clear via
+ *    /role-event), comme avant.
+ *  - 2+ events : affichage read-only (chips + volume). La gestion du cumul
+ *    se fait dans le dialog « Modifier les briques » (le select inline,
+ *    qui remplace tout le rôle d'un coup, serait destructif ici). */
+function LaunchInline({
+  launch,
+  campaignId,
+  items,
+  onChanged,
+}: {
+  launch: CampaignCostSummary["launch"];
+  campaignId: string;
+  items: PaletteItem[];
+  onChanged: () => Promise<void> | void;
+}) {
+  if (launch.events.length >= 2) {
+    return (
+      <div className="bg-amber-50/30 border border-amber-200 rounded p-3 mb-3 last:mb-0 last:mt-3 space-y-1">
+        <span className="text-[10px] uppercase text-zinc-500 font-semibold tracking-wide">
+          Events de lancement ({launch.events.length}, cumulés)
+        </span>
+        <div className="flex flex-wrap gap-1">
+          {launch.events.map((e) => (
+            <span
+              key={`${e.event_school_slug ?? ""}:${e.event_ns}`}
+              className="text-xs bg-white border border-amber-200 rounded px-1.5 py-0.5"
+            >
+              {e.label}
+              <span className="text-zinc-400">
+                {" "}
+                · {e.count.toLocaleString("fr-FR")}
+              </span>
+            </span>
+          ))}
+        </div>
+        <p className="text-[11px] text-zinc-400">
+          Gérez les events de lancement via « Modifier les briques ».
+        </p>
+      </div>
+    );
+  }
+  return (
+    <CampaignRoleInline
+      label="Event de lancement"
+      role="launch"
+      campaignId={campaignId}
+      currentEventNs={launch.events[0]?.event_ns ?? null}
+      currentSchoolSlug={launch.events[0]?.event_school_slug ?? null}
+      items={items}
+      emptyMessage="Aucun event porteur de tel disponible."
+      onChanged={onChanged}
+    />
   );
 }
 

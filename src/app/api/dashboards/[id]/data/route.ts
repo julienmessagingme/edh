@@ -432,49 +432,117 @@ export async function GET(
     })
   );
 
-  // --- Injection launch/failed comme steps synthétiques (Phase 25.5) ---
+  // --- Injection launch/failed comme steps synthétiques + synthèse coût ---
+  // (Phase 25.5, étendu Phase 28.x : plusieurs events de LANCEMENT cumulés)
   // Le dashboard ne stocke que les "body steps" en DB. Pour l'affichage du
-  // funnel d'une campagne, on préfixe la step launch et on suffixe la step
-  // failed, pour avoir un funnel complet "Envoyés → … → Échoués" dans le
-  // chart et la table. Réutilise computeRef pour avoir le count + coût Meta.
+  // funnel d'une campagne, on préfixe la step launch (cumul de tous les
+  // events de lancement) et on suffixe la step failed, pour avoir un funnel
+  // complet "Envoyés → … → Échoués". computeRef donne count + coût Meta par
+  // event ; on réutilise ce calcul pour la synthèse coût net (pas de
+  // double requête sur mm_occurrences).
+  let campaignSummary: CampaignCostSummary | null = null;
   if (dash.campaign_id) {
-    const launchRefCfg = campaignRefs.find((r) => r.role === "launch");
+    // Plusieurs events de lancement possibles : ils se cumulent.
+    const launchRefCfgs = campaignRefs.filter(
+      (r) => r.role === "launch" && r.step_type === "mm_event" && r.event_ns
+    );
     const failedRefCfg = campaignRefs.find((r) => r.role === "failed");
 
-    const synthStep = async (
-      cfg: CampaignRefRow,
-      labelPrefix: string,
-      role: "launch" | "failed"
-    ): Promise<ComputedStep | null> => {
-      if (cfg.step_type !== "mm_event" || !cfg.event_ns) return null;
-      const synthRefRow: RefRow = {
-        id: `synth-${cfg.role}`,
-        step_id: `synth-${cfg.role}`,
+    // Fusionne des breakdowns par pays : somme count + total, garde le rate
+    // (cohérent par pays par hypothèse).
+    const mergeCountryBreakdowns = (
+      lists: (MetaCostBreakdownItem[] | undefined)[]
+    ): MetaCostBreakdownItem[] => {
+      const merged = new Map<string, MetaCostBreakdownItem>();
+      for (const bd of lists) {
+        for (const b of bd ?? []) {
+          const ex = merged.get(b.iso);
+          if (ex) {
+            ex.count += b.count;
+            ex.total_eur += b.total_eur;
+          } else {
+            merged.set(b.iso, { ...b });
+          }
+        }
+      }
+      return Array.from(merged.values()).sort(
+        (a, b) => b.total_eur - a.total_eur
+      );
+    };
+
+    // ComputedRef de chaque event de lancement (count + coût Meta + pays).
+    const launchRefs: ComputedRef[] = [];
+    for (const cfg of launchRefCfgs) {
+      launchRefs.push(
+        await computeRef({
+          id: "synth-launch",
+          step_id: "synth-launch",
+          ref_position: 0,
+          step_type: "mm_event",
+          event_ns: cfg.event_ns,
+          redirect_event_id: null,
+          event_school_slug: cfg.event_school_slug,
+        })
+      );
+    }
+
+    // Step synthétique "Lancement" = cumul de tous les events de départ.
+    let launchStep: ComputedStep | null = null;
+    if (launchRefs.length > 0) {
+      const anyAvail = launchRefs.some((r) => r.available);
+      const launchBreakdown = mergeCountryBreakdowns(
+        launchRefs.map((r) => r.meta_breakdown)
+      );
+      const launchCount = launchRefs.reduce(
+        (s, r) => s + (r.available ? r.count : 0),
+        0
+      );
+      const launchCost = launchRefs.reduce(
+        (s, r) => s + (r.meta_cost_eur ?? 0),
+        0
+      );
+      const cumulLabel = launchRefs.map((r) => r.label).join(" + ");
+      launchStep = {
+        position: 0, // renuméroté en bas
+        label: `Lancement : ${cumulLabel}`,
+        count: anyAvail ? launchCount : 0,
+        available: anyAvail,
+        refs: launchRefs,
+        meta_cost_eur: launchBreakdown.length > 0 ? launchCost : null,
+        ...(launchBreakdown.length > 0
+          ? { meta_breakdown: launchBreakdown }
+          : {}),
+        synth_role: "launch",
+      };
+    }
+
+    // Step synthétique "Échec" (toujours 1 seul event failed).
+    let failedStep: ComputedStep | null = null;
+    if (
+      failedRefCfg &&
+      failedRefCfg.step_type === "mm_event" &&
+      failedRefCfg.event_ns
+    ) {
+      const cr = await computeRef({
+        id: "synth-failed",
+        step_id: "synth-failed",
         ref_position: 0,
         step_type: "mm_event",
-        event_ns: cfg.event_ns,
+        event_ns: failedRefCfg.event_ns,
         redirect_event_id: null,
-        event_school_slug: cfg.event_school_slug,
-      };
-      const cr = await computeRef(synthRefRow);
-      return {
-        position: 0, // renuméroté en bas
-        label: `${labelPrefix} : ${cr.label}`,
+        event_school_slug: failedRefCfg.event_school_slug,
+      });
+      failedStep = {
+        position: 0,
+        label: `Échec : ${cr.label}`,
         count: cr.available ? cr.count : 0,
         available: cr.available,
         refs: [cr],
         meta_cost_eur: cr.meta_cost_eur ?? null,
         ...(cr.meta_breakdown ? { meta_breakdown: cr.meta_breakdown } : {}),
-        synth_role: role,
+        synth_role: "failed",
       };
-    };
-
-    const launchStep = launchRefCfg
-      ? await synthStep(launchRefCfg, "Lancement", "launch")
-      : null;
-    const failedStep = failedRefCfg
-      ? await synthStep(failedRefCfg, "Échec", "failed")
-      : null;
+    }
 
     if (launchStep) computed.unshift(launchStep);
     if (failedStep) computed.push(failedStep);
@@ -483,116 +551,62 @@ export async function GET(
     computed.forEach((s, i) => {
       s.position = i + 1;
     });
-  }
 
-  // --- Synthèse campagne (Phase 25) ---
-  // Si le dashboard est lié à une campagne avec un launch défini, on
-  // calcule le coût Meta brut (lancement), le failed éventuel, et le
-  // net (= lancement scaled par le ratio des envois réussis).
-  // Réutilise les `campaignRefs` chargés plus haut pour le seed mmKeys.
-  let campaignSummary: CampaignCostSummary | null = null;
-  if (dash.campaign_id) {
-    const launchRef = campaignRefs.find((r) => r.role === "launch");
-    const failedRef = campaignRefs.find((r) => r.role === "failed");
+    // --- Synthèse coût net (Phase 25, cumul Phase 28.x) ---
+    // Coût Meta brut (cumul lancement), failed éventuel, et net (= lancement
+    // scaled par le ratio des envois réussis). Réutilise launchStep/failedStep.
+    if (launchStep && launchStep.available) {
+      const launchCount = launchStep.count;
+      const launchBreakdown = launchStep.meta_breakdown ?? [];
+      const launchCost = launchBreakdown.reduce((s, b) => s + b.total_eur, 0);
+      const failedCount =
+        failedStep && failedStep.available ? failedStep.count : 0;
 
-    if (launchRef && launchRef.step_type === "mm_event" && launchRef.event_ns) {
-      const launchSchool = isEdh
-        ? launchRef.event_school_slug
-        : dashSchool;
-      const launchKey = launchSchool
-        ? `${launchSchool}|${launchRef.event_ns}`
-        : null;
-      const launchLabelMeta = launchKey ? mmLabels.get(launchKey) : null;
+      // Net = launch scaled par (net_count / launch_count). On cap à 0 si
+      // plus de failed que de launch (cas pathologique mais possible si les
+      // events sont mal configurés / mal alignés temporellement).
+      const netCount = Math.max(0, launchCount - failedCount);
+      const ratio = launchCount > 0 ? netCount / launchCount : 0;
+      const netBreakdown: MetaCostBreakdownItem[] = launchBreakdown.map(
+        (b) => ({
+          ...b,
+          count: Math.round(b.count * ratio),
+          total_eur: b.total_eur * ratio,
+        })
+      );
+      const netCost = launchCost * ratio;
 
-      if (launchSchool && launchLabelMeta) {
-        const { data: launchOccs } = await sb
-          .from("mm_occurrences")
-          .select("text_value")
-          .eq("school_slug", launchSchool)
-          .eq("event_ns", launchRef.event_ns)
-          .gte("occurred_at", fromTs)
-          .lt("occurred_at", toTs)
-          .limit(10000);
-        const launchPhones = ((launchOccs ?? []) as {
-          text_value: string | null;
-        }[])
-          .map((r) => r.text_value ?? "")
-          .filter((p) => p.length > 0);
-        const launchCount = (launchOccs ?? []).length;
-        const launchBreakdown = groupMetaCostsByCountry(launchPhones).map(
-          (b): MetaCostBreakdownItem => ({
-            iso: b.iso,
-            name: b.name,
-            count: b.count,
-            rate_eur: b.rateEur,
-            total_eur: b.totalEur,
-          })
-        );
-        const launchCost = launchBreakdown.reduce(
-          (s, b) => s + b.total_eur,
-          0
-        );
-
-        let failedCount = 0;
-        let failedLabel = "";
-        if (failedRef && failedRef.step_type === "mm_event" && failedRef.event_ns) {
-          const failedSchool = isEdh
-            ? failedRef.event_school_slug
-            : dashSchool;
-          if (failedSchool) {
-            const failedKey = `${failedSchool}|${failedRef.event_ns}`;
-            const failedMeta = mmLabels.get(failedKey);
-            if (failedMeta) {
-              const { count: fc } = await sb
-                .from("mm_occurrences")
-                .select("*", { count: "exact", head: true })
-                .eq("school_slug", failedSchool)
-                .eq("event_ns", failedRef.event_ns)
-                .gte("occurred_at", fromTs)
-                .lt("occurred_at", toTs);
-              failedCount = fc ?? 0;
-              failedLabel = chipLabel(failedMeta.name, failedSchool);
-            }
-          }
-        }
-
-        // Net = launch scaled par (net_count / launch_count). On cap à 0
-        // si plus de failed que de launch (cas pathologique mais possible
-        // si les events sont mal configurés / mal alignés temporellement).
-        const netCount = Math.max(0, launchCount - failedCount);
-        const ratio = launchCount > 0 ? netCount / launchCount : 0;
-        const netBreakdown: MetaCostBreakdownItem[] = launchBreakdown.map(
-          (b) => ({
-            ...b,
-            count: Math.round(b.count * ratio),
-            total_eur: b.total_eur * ratio,
-          })
-        );
-        const netCost = launchCost * ratio;
-
-        campaignSummary = {
-          launch: {
-            count: launchCount,
-            cost_eur: launchCost,
-            breakdown: launchBreakdown,
-            label: chipLabel(launchLabelMeta.name, launchSchool),
-            event_ns: launchRef.event_ns,
-            event_school_slug: launchRef.event_school_slug ?? null,
-          },
-          failed:
-            failedRef && failedRef.event_ns
-              ? {
-                  count: failedCount,
-                  label: failedLabel || "(indisponible)",
-                  event_ns: failedRef.event_ns,
-                  event_school_slug: failedRef.event_school_slug ?? null,
-                }
-              : null,
-          net_count: netCount,
-          net_cost_eur: netCost,
-          net_breakdown: netBreakdown,
-        };
-      }
+      campaignSummary = {
+        launch: {
+          count: launchCount,
+          cost_eur: launchCost,
+          breakdown: launchBreakdown,
+          label:
+            launchRefs.length > 1
+              ? `Cumul de ${launchRefs.length} events`
+              : launchRefs[0]?.label ?? "Lancement",
+          events: launchRefCfgs.map((cfg, i) => ({
+            event_ns: cfg.event_ns!,
+            event_school_slug: cfg.event_school_slug,
+            label: launchRefs[i]?.label ?? cfg.event_ns!,
+            count: launchRefs[i]?.available ? launchRefs[i].count : 0,
+          })),
+        },
+        failed:
+          failedRefCfg && failedRefCfg.event_ns
+            ? {
+                count: failedCount,
+                label:
+                  (failedStep?.label ?? "").replace(/^Échec\s*:\s*/, "") ||
+                  "(indisponible)",
+                event_ns: failedRefCfg.event_ns,
+                event_school_slug: failedRefCfg.event_school_slug ?? null,
+              }
+            : null,
+        net_count: netCount,
+        net_cost_eur: netCost,
+        net_breakdown: netBreakdown,
+      };
     }
   }
 

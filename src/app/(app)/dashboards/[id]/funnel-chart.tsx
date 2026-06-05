@@ -78,7 +78,9 @@ export function FunnelChart({ steps: rawSteps }: { steps: ComputedStep[] }) {
   if (willSplitLaunch) {
     const launchStep = steps.find((s) => s.synth_role === "launch");
     const netLabel = launchStep
-      ? `Envois réussis (${launchStep.refs[0]?.label ?? "Lancement"})`
+      ? launchStep.refs.length > 1
+        ? "Envois réussis (cumul lancement)"
+        : `Envois réussis (${launchStep.refs[0]?.label ?? "Lancement"})`
       : "Envois réussis";
     // Série net en tête → tracée AU-DESSUS du failed dans la pile
     // (le 1er ajouté est rendu en bas). On veut le rouge en bas, le net dessus.
