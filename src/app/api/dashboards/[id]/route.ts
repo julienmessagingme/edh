@@ -51,17 +51,15 @@ const PatchBody = z
 
 /**
  * Charge le dashboard et calcule visible + can_edit.
- *   - visible  : owner OR is_shared OR lié à une campagne (campaign_id non
- *     NULL). Les tableaux de campagne s'affichent à tous ceux qui voient la
- *     campagne ; la visibilité réelle est gérée par les ACL de la campagne
- *     (cf. `/campaigns/[id]` + GET `/api/campaigns/[id]`). Le flag
- *     `dashboards.is_shared` est ignoré pour eux (cf. migration 013). On
- *     aligne ici sur la route `/data` qui appliquait déjà cette règle — sans
- *     ça, un non-owner ouvrant une campagne PARTAGÉE était renvoyé vers
- *     « Mes tableaux » (404 sur le GET métadonnées avant même le /data).
- *   - can_edit : owner OR admin (un tableau de campagne a
- *     `created_by = campaign.created_by`, donc can_edit reflète bien les
- *     droits d'édition de la campagne).
+ *   - Tableau libre (campaign_id null) :
+ *       visible  = owner OR is_shared ;  can_edit = owner OR admin
+ *   - Tableau lié à une campagne : visibilité ET édition héritent de la
+ *     CAMPAGNE (cf. ACL de `/api/campaigns/[id]`), jamais du flag
+ *     `dashboards.is_shared` (toujours false pour eux ; cf. migration 013).
+ *     Sans ça : soit un non-owner d'une campagne PARTAGÉE était renvoyé vers
+ *     « Mes tableaux » (404), soit — avec l'ancien garde-fou `campaign_id !=
+ *     null` — N'IMPORTE quel user de l'école voyait le tableau d'une campagne
+ *     PRIVÉE (fuite des compteurs). On résout donc l'ACL réelle de la campagne.
  * Renvoie null si pas dans la même école que le scope courant ou pas
  * visible. */
 async function loadAccessible(
@@ -82,11 +80,23 @@ async function loadAccessible(
     .maybeSingle();
   if (!data) return null;
   if (data.school_slug !== schoolSlug) return null;
-  const visible =
-    data.created_by === userId ||
-    data.is_shared === true ||
-    data.campaign_id !== null;
-  if (!visible) return null;
+
+  // L'« owner effectif » qui pilote visibilité + édition : la CAMPAGNE pour un
+  // tableau lié, sinon le tableau lui-même. Client raw (multi-école) → on
+  // vérifie explicitement l'école de la campagne.
+  let effectiveOwner = data.created_by;
+  if (data.campaign_id) {
+    const { data: camp } = await sb
+      .from("campaigns")
+      .select("created_by, is_shared, school_slug")
+      .eq("id", data.campaign_id)
+      .maybeSingle();
+    if (!camp || camp.school_slug !== schoolSlug) return null;
+    if (!(camp.created_by === userId || camp.is_shared === true)) return null;
+    effectiveOwner = camp.created_by;
+  } else {
+    if (!(data.created_by === userId || data.is_shared === true)) return null;
+  }
 
   const { data: meRow } = await sb
     .from("users")
@@ -98,7 +108,7 @@ async function loadAccessible(
     id: data.id,
     created_by: data.created_by,
     is_shared: data.is_shared,
-    can_edit: isAdmin || data.created_by === userId,
+    can_edit: isAdmin || effectiveOwner === userId,
   };
 }
 
