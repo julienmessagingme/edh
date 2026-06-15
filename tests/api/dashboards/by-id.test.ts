@@ -39,6 +39,23 @@ function ownerOnlyMock(
   };
 }
 
+/**
+ * Mock de la table `users` que `loadAccessible` interroge une fois la
+ * visibilité acquise (`users.select('is_admin').eq('id',...).maybeSingle()`),
+ * pour décider de can_edit. À brancher dans tout `fromImpl` per-table qui va
+ * jusqu'au bout de loadAccessible (sinon : "Unexpected table: users").
+ */
+function usersTableMock(isAdmin = false) {
+  return {
+    select: () => ({
+      eq: () => ({
+        maybeSingle: () =>
+          Promise.resolve({ data: { is_admin: isAdmin }, error: null }),
+      }),
+    }),
+  };
+}
+
 describe("GET /api/dashboards/[id]", () => {
   it("404 when not owned by current user", async () => {
     const { getSupabase } = await import("@/lib/supabase/service");
@@ -164,6 +181,7 @@ describe("GET /api/dashboards/[id]", () => {
           }),
         };
       }
+      if (table === "users") return usersTableMock();
       throw new Error(`Unexpected table: ${table}`);
     };
     const { getSupabase } = await import("@/lib/supabase/service");
@@ -238,6 +256,7 @@ describe("GET /api/dashboards/[id]", () => {
           }),
         };
       }
+      if (table === "users") return usersTableMock();
       throw new Error(`Unexpected table: ${table}`);
     };
     const { getSupabase } = await import("@/lib/supabase/service");
@@ -254,6 +273,159 @@ describe("GET /api/dashboards/[id]", () => {
       dashboard: { steps: unknown[] };
     };
     expect(body.dashboard.steps).toEqual([]);
+  });
+
+  // Régression : un tableau lié à une campagne PARTAGÉE doit être visible
+  // par un non-auteur. L'ACL est héritée de la CAMPAGNE, jamais de
+  // `dashboards.is_shared` (toujours false pour ces tableaux). Avant le fix,
+  // loadAccessible regardait `dashboards.is_shared` → 404 → le builder
+  // redirigeait vers /dashboards (« Mes tableaux »). En mode EDH (client raw,
+  // multi-école) la campagne doit aussi matcher le scope → school_slug mocké.
+  it("campaign-linked dashboard: visible to non-owner when the campaign is shared", async () => {
+    let dashCall = 0;
+    const fromImpl = (table: string) => {
+      if (table === "users") return usersTableMock(false);
+      if (table === "campaigns") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({
+                  data: {
+                    created_by: "OWNER",
+                    is_shared: true,
+                    school_slug: "efap",
+                  },
+                  error: null,
+                }),
+            }),
+          }),
+        };
+      }
+      if (table === "dashboards") {
+        dashCall += 1;
+        if (dashCall === 1) {
+          // 1er appel = probe loadAccessible (maybeSingle)
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: () =>
+                  Promise.resolve({
+                    data: {
+                      id: "d1",
+                      created_by: "OWNER",
+                      school_slug: "efap",
+                      is_shared: false,
+                      campaign_id: "c1",
+                    },
+                    error: null,
+                  }),
+              }),
+            }),
+          };
+        }
+        // 2e appel = select complet (single)
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () =>
+                Promise.resolve({
+                  data: {
+                    id: "d1",
+                    school_slug: "efap",
+                    created_by: "OWNER",
+                    name: "Camp",
+                    type: "funnel",
+                    date_preset: "30d",
+                    date_from: null,
+                    date_to: null,
+                    created_at: "x",
+                    updated_at: "y",
+                    campaign_id: "c1",
+                    is_shared: false,
+                  },
+                  error: null,
+                }),
+            }),
+          }),
+        };
+      }
+      if (table === "dashboard_steps") {
+        return {
+          select: () => ({
+            eq: () => ({
+              order: () => Promise.resolve({ data: [], error: null }),
+            }),
+          }),
+        };
+      }
+      throw new Error(`Unexpected table: ${table}`);
+    };
+    const { getSupabase } = await import("@/lib/supabase/service");
+    (getSupabase as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue(
+      { from: fromImpl }
+    );
+
+    const { GET } = await import("@/app/api/dashboards/[id]/route");
+    const res = await GET(new Request("http://x/api/dashboards/d1"), {
+      params: Promise.resolve({ id: "d1" }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { dashboard: { can_edit: boolean } };
+    // Non-auteur, non-admin → visible mais lecture seule.
+    expect(body.dashboard.can_edit).toBe(false);
+  });
+
+  it("campaign-linked dashboard: 404 for non-owner when the campaign is private", async () => {
+    const fromImpl = (table: string) => {
+      if (table === "campaigns") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({
+                  data: {
+                    created_by: "OWNER",
+                    is_shared: false,
+                    school_slug: "efap",
+                  },
+                  error: null,
+                }),
+            }),
+          }),
+        };
+      }
+      if (table === "dashboards") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({
+                  data: {
+                    id: "d1",
+                    created_by: "OWNER",
+                    school_slug: "efap",
+                    is_shared: false,
+                    campaign_id: "c1",
+                  },
+                  error: null,
+                }),
+            }),
+          }),
+        };
+      }
+      throw new Error(`Unexpected table: ${table}`);
+    };
+    const { getSupabase } = await import("@/lib/supabase/service");
+    (getSupabase as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue(
+      { from: fromImpl }
+    );
+
+    const { GET } = await import("@/app/api/dashboards/[id]/route");
+    const res = await GET(new Request("http://x/api/dashboards/d1"), {
+      params: Promise.resolve({ id: "d1" }),
+    });
+    expect(res.status).toBe(404);
   });
 });
 
@@ -315,6 +487,7 @@ describe("PATCH /api/dashboards/[id]", () => {
             update,
           };
         }
+        if (table === "users") return usersTableMock();
         return {};
       },
     });
@@ -360,6 +533,7 @@ describe("PATCH /api/dashboards/[id]", () => {
             }),
           };
         }
+        if (table === "users") return usersTableMock();
         throw new Error(`Unexpected table: ${table}`);
       },
       rpc,

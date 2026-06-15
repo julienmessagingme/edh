@@ -655,6 +655,12 @@ export function BuilderClient({
   }
   if (!dashboard || !palette) return null;
 
+  // Viewer non-auteur (tableau ou campagne partagé par quelqu'un d'autre) :
+  // on inhibe toutes les affordances d'édition côté UI. Le serveur renvoie
+  // déjà 403 sur ces mutations ; ce flag évite les toasts d'erreur et les
+  // changements optimistes qui ne persistent pas.
+  const readOnly = dashboard.can_edit === false;
+
   const stepIds = dashboard.steps.map((s) => s.id);
 
   // Palette filtrée pour l'affichage uniquement (sidebar + AddRefMenu).
@@ -685,8 +691,8 @@ export function BuilderClient({
   return (
     <DndContext
       sensors={sensors}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
+      onDragStart={readOnly ? undefined : handleDragStart}
+      onDragEnd={readOnly ? undefined : handleDragEnd}
       onDragCancel={() => setActiveDrag(null)}
     >
       <div className="space-y-4">
@@ -697,18 +703,20 @@ export function BuilderClient({
             {saving && (
               <span className="text-xs text-zinc-500">Enregistrement…</span>
             )}
-            {isCampaignMode && dashboard.can_edit === false && (
-              <span className="text-xs text-zinc-500 italic">
-                Lecture seule (campagne partagée par un autre utilisateur)
-              </span>
-            )}
             {isCampaignMode ? (
-              <Button
-                variant="outline"
-                onClick={() => router.push("/campaigns")}
-              >
-                ← Campagnes
-              </Button>
+              <>
+                {readOnly && (
+                  <span className="text-xs text-zinc-500 italic">
+                    Lecture seule (campagne partagée par un autre utilisateur)
+                  </span>
+                )}
+                <Button
+                  variant="outline"
+                  onClick={() => router.push("/campaigns")}
+                >
+                  ← Campagnes
+                </Button>
+              </>
             ) : (
               <>
                 {dashboard.can_edit !== false && (
@@ -747,7 +755,7 @@ export function BuilderClient({
           <Input
             value={dashboard.name}
             onChange={(e) => updateName(e.target.value)}
-            disabled={dashboard.can_edit === false}
+            disabled={readOnly}
             className="text-lg font-semibold disabled:opacity-100 disabled:cursor-default"
             placeholder="Nom du tableau"
           />
@@ -758,7 +766,7 @@ export function BuilderClient({
                 size="sm"
                 variant={dashboard.date_preset === p.key ? "default" : "outline"}
                 onClick={() => updatePreset(p.key)}
-                disabled={dashboard.can_edit === false}
+                disabled={readOnly}
               >
                 {p.label}
               </Button>
@@ -773,7 +781,7 @@ export function BuilderClient({
                 type="date"
                 value={dashboard.date_from ?? ""}
                 onChange={(e) => updateCustomDate("date_from", e.target.value)}
-                disabled={dashboard.can_edit === false}
+                disabled={readOnly}
                 className="w-40"
               />
             </div>
@@ -786,7 +794,7 @@ export function BuilderClient({
                 type="date"
                 value={dashboard.date_to ?? ""}
                 onChange={(e) => updateCustomDate("date_to", e.target.value)}
-                disabled={dashboard.can_edit === false}
+                disabled={readOnly}
                 className="w-40"
               />
             </div>
@@ -826,14 +834,20 @@ export function BuilderClient({
                 <p className="text-xs uppercase text-zinc-500 mb-1">
                   Briques de la campagne
                 </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onEditCampaignRefs?.()}
-                  className="w-full"
-                >
-                  Modifier les briques
-                </Button>
+                {readOnly ? (
+                  <p className="text-xs text-zinc-400 italic">
+                    Lecture seule.
+                  </p>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onEditCampaignRefs?.()}
+                    className="w-full"
+                  >
+                    Modifier les briques
+                  </Button>
+                )}
               </div>
             ) : (
               <div>
@@ -865,7 +879,7 @@ export function BuilderClient({
               </h4>
               <ul className="space-y-1">
                 {displayedPalette.mmEvents.map((p) => (
-                  <PaletteRow key={p.ref_id} item={p} />
+                  <PaletteRow key={p.ref_id} item={p} readOnly={readOnly} />
                 ))}
               </ul>
             </div>
@@ -875,7 +889,7 @@ export function BuilderClient({
               </h4>
               <ul className="space-y-1">
                 {displayedPalette.redirectEvents.map((p) => (
-                  <PaletteRow key={p.ref_id} item={p} />
+                  <PaletteRow key={p.ref_id} item={p} readOnly={readOnly} />
                 ))}
               </ul>
             </div>
@@ -919,6 +933,7 @@ export function BuilderClient({
                   items={palette.mmEvents.filter(
                     (p) => p.has_text_value === true
                   )}
+                  readOnly={readOnly}
                   onChanged={async () => {
                     await fetchData();
                     setLocalRefsBump((v) => v + 1);
@@ -940,6 +955,7 @@ export function BuilderClient({
                   }
                   items={palette.mmEvents}
                   emptyMessage="Aucun event MM disponible."
+                  readOnly={readOnly}
                   onChanged={async () => {
                     await fetchData();
                     setLocalRefsBump((v) => v + 1);
@@ -967,6 +983,7 @@ export function BuilderClient({
                       onAddRef={(p) => addRefToStep(i, p)}
                       onRemoveRef={(refIdx) => removeRefFromStep(i, refIdx)}
                       onRemoveStep={() => removeStep(i)}
+                      readOnly={readOnly}
                     />
                   ))}
                 </ol>
@@ -1167,11 +1184,13 @@ function LaunchInline({
   launch,
   campaignId,
   items,
+  readOnly,
   onChanged,
 }: {
   launch: CampaignCostSummary["launch"];
   campaignId: string;
   items: PaletteItem[];
+  readOnly?: boolean;
   onChanged: () => Promise<void> | void;
 }) {
   if (launch.events.length >= 2) {
@@ -1209,6 +1228,7 @@ function LaunchInline({
       currentSchoolSlug={launch.events[0]?.event_school_slug ?? null}
       items={items}
       emptyMessage="Aucun event porteur de tel disponible."
+      readOnly={readOnly}
       onChanged={onChanged}
     />
   );
@@ -1226,6 +1246,7 @@ function CampaignRoleInline(props: {
   currentSchoolSlug: string | null;
   items: PaletteItem[];
   emptyMessage: string;
+  readOnly?: boolean;
   onChanged: () => Promise<void> | void;
 }) {
   return (
@@ -1247,6 +1268,7 @@ function RoleEventSelect({
   currentSchoolSlug,
   items,
   emptyMessage,
+  readOnly,
   onChanged,
 }: {
   label: string;
@@ -1256,6 +1278,7 @@ function RoleEventSelect({
   currentSchoolSlug: string | null;
   items: PaletteItem[];
   emptyMessage: string;
+  readOnly?: boolean;
   onChanged: () => Promise<void> | void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -1323,7 +1346,7 @@ function RoleEventSelect({
         <select
           value={currentKey}
           onChange={(e) => apply(e.target.value)}
-          disabled={busy}
+          disabled={busy || readOnly}
           className="w-full text-sm border rounded px-2 py-1.5 bg-white disabled:opacity-60"
         >
           <option value="">— Aucun —</option>
@@ -1375,9 +1398,16 @@ function SummaryStat({
   );
 }
 
-function PaletteRow({ item }: { item: PaletteItem }) {
+function PaletteRow({
+  item,
+  readOnly,
+}: {
+  item: PaletteItem;
+  readOnly?: boolean;
+}) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `${PALETTE_PREFIX}${item.ref_id}`,
+    disabled: readOnly,
   });
   // Tooltip natif : la palette tronque à 240 px, beaucoup de noms d'events
   // EDH font 30-60 chars. Le `title` permet de lire le label complet au
@@ -1388,9 +1418,9 @@ function PaletteRow({ item }: { item: PaletteItem }) {
   return (
     <li
       ref={setNodeRef}
-      className={`flex items-start gap-2 px-2 py-1 hover:bg-zinc-50 rounded text-sm cursor-grab ${
-        isDragging ? "opacity-30" : ""
-      }`}
+      className={`flex items-start gap-2 px-2 py-1 hover:bg-zinc-50 rounded text-sm ${
+        readOnly ? "" : "cursor-grab"
+      } ${isDragging ? "opacity-30" : ""}`}
       title={fullLabel}
       {...attributes}
       {...listeners}
@@ -1498,6 +1528,7 @@ interface SortableStepGroupProps {
   onAddRef: (p: PaletteItem) => void;
   onRemoveRef: (refIdx: number) => void;
   onRemoveStep: () => void;
+  readOnly?: boolean;
 }
 
 function SortableStepGroup({
@@ -1510,6 +1541,7 @@ function SortableStepGroup({
   onAddRef,
   onRemoveRef,
   onRemoveStep,
+  readOnly,
 }: SortableStepGroupProps) {
   const {
     attributes,
@@ -1519,7 +1551,7 @@ function SortableStepGroup({
     transition,
     isDragging,
     isOver,
-  } = useSortable({ id: step.id });
+  } = useSortable({ id: step.id, disabled: readOnly });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -1540,30 +1572,39 @@ function SortableStepGroup({
       }`}
     >
       <div className="flex items-center gap-2 mb-2">
-        <button
-          {...attributes}
-          {...listeners}
-          className="cursor-grab text-zinc-400 hover:text-zinc-700 -ml-1 p-1"
-          aria-label="Réordonner"
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
+        {readOnly ? (
+          <span className="text-zinc-300 -ml-1 p-1" aria-hidden>
+            <GripVertical className="h-4 w-4" />
+          </span>
+        ) : (
+          <button
+            {...attributes}
+            {...listeners}
+            className="cursor-grab text-zinc-400 hover:text-zinc-700 -ml-1 p-1"
+            aria-label="Réordonner"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+        )}
         <span className="text-xs text-zinc-400 w-5">{index + 1}.</span>
         <Input
           value={step.label ?? ""}
           onChange={(e) => onLabelChange(e.target.value)}
           placeholder={placeholder}
+          disabled={readOnly}
           className="flex-1 h-8 text-sm bg-white"
         />
         <span className="text-xs text-zinc-400 w-12 text-right">{typeBadge}</span>
-        <button
-          onClick={onRemoveStep}
-          className="text-zinc-400 hover:text-red-600 p-1"
-          aria-label="Supprimer l'étape"
-          title="Supprimer l'étape entière"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        {!readOnly && (
+          <button
+            onClick={onRemoveStep}
+            className="text-zinc-400 hover:text-red-600 p-1"
+            aria-label="Supprimer l'étape"
+            title="Supprimer l'étape entière"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-1.5 pl-7">
@@ -1592,17 +1633,19 @@ function SortableStepGroup({
               {!meta.available && (
                 <span className="text-amber-700 bg-amber-100 px-1 rounded">!</span>
               )}
-              <button
-                onClick={() => onRemoveRef(ri)}
-                className="text-zinc-400 hover:text-red-600"
-                aria-label="Retirer cette source"
-              >
-                <X className="h-3 w-3" />
-              </button>
+              {!readOnly && (
+                <button
+                  onClick={() => onRemoveRef(ri)}
+                  className="text-zinc-400 hover:text-red-600"
+                  aria-label="Retirer cette source"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
             </span>
           );
         })}
-        <AddRefMenu palette={palette} onAdd={onAddRef} />
+        {!readOnly && <AddRefMenu palette={palette} onAdd={onAddRef} />}
       </div>
     </li>
   );
