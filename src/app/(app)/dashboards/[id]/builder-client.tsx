@@ -930,12 +930,16 @@ export function BuilderClient({
               // en haut, AVANT les étapes du funnel (c'est lui qui
               // déclenche tout). Le failed est rendu en bas via bottomSlot.
               campaignId && computed?.campaign_summary ? (
-                <LaunchInline
-                  launch={computed.campaign_summary.launch}
+                <RoleEventsInline
+                  events={computed.campaign_summary.launch.events}
+                  role="launch"
+                  label="Event de lancement"
+                  manageLabel="Events de lancement"
                   campaignId={campaignId}
                   items={palette.mmEvents.filter(
                     (p) => p.has_text_value === true
                   )}
+                  emptyMessage="Aucun event porteur de tel disponible."
                   readOnly={readOnly}
                   onChanged={async () => {
                     await fetchData();
@@ -946,16 +950,12 @@ export function BuilderClient({
             }
             bottomSlot={
               campaignId && computed?.campaign_summary ? (
-                <CampaignRoleInline
-                  label="Event failed WhatsApp"
+                <RoleEventsInline
+                  events={computed.campaign_summary.failed?.events ?? []}
                   role="failed"
+                  label="Event failed WhatsApp"
+                  manageLabel="Events failed WhatsApp"
                   campaignId={campaignId}
-                  currentEventNs={
-                    computed.campaign_summary.failed?.event_ns ?? null
-                  }
-                  currentSchoolSlug={
-                    computed.campaign_summary.failed?.event_school_slug ?? null
-                  }
                   items={palette.mmEvents}
                   emptyMessage="Aucun event MM disponible."
                   readOnly={readOnly}
@@ -1177,33 +1177,44 @@ function CampaignCostSummaryCard({
   );
 }
 
-/** Contrôle inline des events de LANCEMENT (cumul possible, Phase 28.x).
+/** Contrôle inline des events d'un rôle cumulable (LANCEMENT ou FAILED,
+ *  Phase 28.x+).
  *  - 0 ou 1 event : select inline éditable (set / swap / clear via
  *    /role-event), comme avant.
  *  - 2+ events : affichage read-only (chips + volume). La gestion du cumul
  *    se fait dans le dialog « Modifier les briques » (le select inline,
  *    qui remplace tout le rôle d'un coup, serait destructif ici). */
-function LaunchInline({
-  launch,
+function RoleEventsInline({
+  events,
+  role,
+  label,
+  manageLabel,
   campaignId,
   items,
+  emptyMessage,
   readOnly,
   onChanged,
 }: {
-  launch: CampaignCostSummary["launch"];
+  events: CampaignCostSummary["launch"]["events"];
+  role: "launch" | "failed";
+  /** Libellé du select inline (cas 0/1 event). */
+  label: string;
+  /** Libellé de l'entête des chips read-only (cas 2+ events). */
+  manageLabel: string;
   campaignId: string;
   items: PaletteItem[];
+  emptyMessage: string;
   readOnly?: boolean;
   onChanged: () => Promise<void> | void;
 }) {
-  if (launch.events.length >= 2) {
+  if (events.length >= 2) {
     return (
       <div className="bg-amber-50/30 border border-amber-200 rounded p-3 mb-3 last:mb-0 last:mt-3 space-y-1">
         <span className="text-[10px] uppercase text-zinc-500 font-semibold tracking-wide">
-          Events de lancement ({launch.events.length}, cumulés)
+          {manageLabel} ({events.length}, cumulés)
         </span>
         <div className="flex flex-wrap gap-1">
-          {launch.events.map((e) => (
+          {events.map((e) => (
             <span
               key={`${e.event_school_slug ?? ""}:${e.event_ns}`}
               className="text-xs bg-white border border-amber-200 rounded px-1.5 py-0.5"
@@ -1217,20 +1228,20 @@ function LaunchInline({
           ))}
         </div>
         <p className="text-[11px] text-zinc-400">
-          Gérez les events de lancement via « Modifier les briques ».
+          Gérez ces events via « Modifier les briques ».
         </p>
       </div>
     );
   }
   return (
     <CampaignRoleInline
-      label="Event de lancement"
-      role="launch"
+      label={label}
+      role={role}
       campaignId={campaignId}
-      currentEventNs={launch.events[0]?.event_ns ?? null}
-      currentSchoolSlug={launch.events[0]?.event_school_slug ?? null}
+      currentEventNs={events[0]?.event_ns ?? null}
+      currentSchoolSlug={events[0]?.event_school_slug ?? null}
       items={items}
-      emptyMessage="Aucun event porteur de tel disponible."
+      emptyMessage={emptyMessage}
       readOnly={readOnly}
       onChanged={onChanged}
     />

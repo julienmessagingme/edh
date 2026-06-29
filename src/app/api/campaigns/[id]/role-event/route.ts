@@ -73,10 +73,12 @@ export async function PATCH(
   if (!isAdmin && campaign.created_by !== user.userId)
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
-  // DELETE l'éventuelle row existante pour ce rôle. Idempotent : si pas
-  // de row, no-op. L'index UNIQUE partiel (migration 012) bloquerait
-  // un 2e INSERT donc le DELETE prélable est nécessaire avant tout
-  // changement de l'event.
+  // DELETE TOUTES les rows existantes de ce rôle, puis INSERT au plus une
+  // (le "single-event setter"). Depuis que launch ET failed acceptent
+  // plusieurs events (migrations 014/015, index uniques levés), cet endpoint
+  // COLLAPSE le rôle à un seul event : il n'est donc utilisé côté UI que dans
+  // le cas 0/1 event (select inline). La gestion d'un cumul (2+ events) passe
+  // par le dialog « Modifier les briques » (replace de toutes les refs).
   const { error: delErr } = await sb
     .from("campaign_refs")
     .delete()

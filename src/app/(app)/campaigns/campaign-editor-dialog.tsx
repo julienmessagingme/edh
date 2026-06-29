@@ -55,8 +55,8 @@ export function CampaignEditorDialog({
   const [launchKeys, setLaunchKeys] = useState<Set<string>>(new Set());
   /** Set de paletteKeys des briques body. */
   const [bodyKeys, setBodyKeys] = useState<Set<string>>(new Set());
-  /** paletteKey de l'event failed, ou null. */
-  const [failedKey, setFailedKey] = useState<string | null>(null);
+  /** Set de paletteKeys des events failed (cumulés). */
+  const [failedKeys, setFailedKeys] = useState<Set<string>>(new Set());
 
   const [bodySearch, setBodySearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -87,23 +87,23 @@ export function CampaignEditorDialog({
           // Dispatch des refs par rôle. paletteKeyOf retombe sur le bon
           // composite key qu'on utilise côté palette.
           const l = new Set<string>();
-          let f: string | null = null;
+          const f = new Set<string>();
           const b = new Set<string>();
           for (const r of campaign.refs as CampaignRef[]) {
             const key = paletteKeyOf(r);
             if (r.role === "launch") l.add(key);
-            else if (r.role === "failed") f = key;
+            else if (r.role === "failed") f.add(key);
             else b.add(key);
           }
           setLaunchKeys(l);
           setBodyKeys(b);
-          setFailedKey(f);
+          setFailedKeys(f);
         } else {
           setName("");
           setIsShared(false);
           setLaunchKeys(new Set());
           setBodyKeys(new Set());
-          setFailedKey(null);
+          setFailedKeys(new Set());
         }
       } catch {
         toast.error("Erreur de chargement");
@@ -132,10 +132,10 @@ export function CampaignEditorDialog({
     return palette.mmEvents.filter(
       (i) =>
         i.has_text_value === true &&
-        i.ref_id !== failedKey &&
+        !failedKeys.has(i.ref_id) &&
         !bodyKeys.has(i.ref_id)
     );
-  }, [palette, failedKey, bodyKeys]);
+  }, [palette, failedKeys, bodyKeys]);
 
   // Section 3 (failed) : tous les events MM, hors body / launch.
   const failedCandidates = useMemo(() => {
@@ -149,9 +149,9 @@ export function CampaignEditorDialog({
   const bodyMm = useMemo(() => {
     if (!palette) return [];
     return palette.mmEvents.filter(
-      (i) => !launchKeys.has(i.ref_id) && i.ref_id !== failedKey
+      (i) => !launchKeys.has(i.ref_id) && !failedKeys.has(i.ref_id)
     );
-  }, [palette, launchKeys, failedKey]);
+  }, [palette, launchKeys, failedKeys]);
   const bodyUrls = useMemo(() => {
     if (!palette) return [];
     return palette.redirectEvents;
@@ -195,6 +195,15 @@ export function CampaignEditorDialog({
     });
   }
 
+  function toggleFailed(item: PaletteItem) {
+    setFailedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(item.ref_id)) next.delete(item.ref_id);
+      else next.add(item.ref_id);
+      return next;
+    });
+  }
+
   // --- Save ---
 
   function makeRefPayload(key: string, role: CampaignRefRole) {
@@ -226,7 +235,7 @@ export function CampaignEditorDialog({
       const refs = [
         ...Array.from(launchKeys).map((k) => makeRefPayload(k, "launch")),
         ...Array.from(bodyKeys).map((k) => makeRefPayload(k, "body")),
-        ...(failedKey ? [makeRefPayload(failedKey, "failed")] : []),
+        ...Array.from(failedKeys).map((k) => makeRefPayload(k, "failed")),
       ].filter(Boolean);
 
       const body = JSON.stringify({
@@ -372,19 +381,30 @@ export function CampaignEditorDialog({
               </div>
             </SectionCard>
 
-            {/* Section 3 : Event failed WhatsApp */}
+            {/* Section 3 : Events failed WhatsApp (multi, cumulés) */}
             <SectionCard
               step={3}
-              title="Event failed WhatsApp"
-              hint="Optionnel. Count soustrait du lancement pour calculer les envois réussis et ajuster le coût Meta."
+              title={`Events failed WhatsApp (${failedKeys.size} sélectionné${
+                failedKeys.size > 1 ? "s" : ""
+              })`}
+              hint="Optionnel. Plusieurs possibles : la somme de leurs counts est soustraite du lancement pour calculer les envois réussis et ajuster le coût Meta."
             >
-              <EventSelect
-                value={failedKey}
-                onChange={setFailedKey}
-                items={failedCandidates}
-                placeholder="— Aucun event failed —"
-                emptyMessage="Aucun event MM disponible."
-              />
+              {failedCandidates.length === 0 ? (
+                <p className="text-xs text-zinc-400 italic">
+                  Aucun event MM disponible.
+                </p>
+              ) : (
+                <div className="border rounded h-[200px]">
+                  <RefList
+                    title={`Custom events MM (${failedCandidates.length})`}
+                    items={failedCandidates}
+                    selectedKeys={failedKeys}
+                    onToggle={toggleFailed}
+                    searchActive={false}
+                    className="h-full"
+                  />
+                </div>
+              )}
             </SectionCard>
           </div>
         )}
@@ -432,62 +452,6 @@ function SectionCard({
       {hint && <p className="text-xs text-zinc-500">{hint}</p>}
       <div>{children}</div>
     </section>
-  );
-}
-
-/** Select natif avec optgroup par école en mode EDH. Accepte une option
- *  vide « Aucun » pour les rôles optionnels (launch / failed). */
-function EventSelect({
-  value,
-  onChange,
-  items,
-  placeholder,
-  emptyMessage,
-}: {
-  value: string | null;
-  onChange: (v: string | null) => void;
-  items: PaletteItem[];
-  placeholder: string;
-  emptyMessage: string;
-}) {
-  const isMultiSchool = items.some((i) => !!i.school_name);
-  const groups = new Map<string, PaletteItem[]>();
-  if (isMultiSchool) {
-    for (const i of items) {
-      const k = i.school_name ?? i.school_slug ?? "_";
-      const arr = groups.get(k) ?? [];
-      arr.push(i);
-      groups.set(k, arr);
-    }
-  }
-  if (items.length === 0) {
-    return (
-      <p className="text-xs text-zinc-400 italic">{emptyMessage}</p>
-    );
-  }
-  return (
-    <select
-      value={value ?? ""}
-      onChange={(e) => onChange(e.target.value || null)}
-      className="w-full text-sm border rounded px-2 py-1.5 bg-white"
-    >
-      <option value="">{placeholder}</option>
-      {isMultiSchool
-        ? Array.from(groups.entries()).map(([school, list]) => (
-            <optgroup key={school} label={school}>
-              {list.map((i) => (
-                <option key={i.ref_id} value={i.ref_id}>
-                  {i.label}
-                </option>
-              ))}
-            </optgroup>
-          ))
-        : items.map((i) => (
-            <option key={i.ref_id} value={i.ref_id}>
-              {i.label}
-            </option>
-          ))}
-    </select>
   );
 }
 

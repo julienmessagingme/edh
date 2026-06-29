@@ -481,7 +481,11 @@ export async function GET(
     const launchRefCfgs = campaignRefs.filter(
       (r) => r.role === "launch" && r.step_type === "mm_event" && r.event_ns
     );
-    const failedRefCfg = campaignRefs.find((r) => r.role === "failed");
+    // Plusieurs events failed possibles : ils se cumulent (symétrique du
+    // launch). Leur count cumulé est soustrait du lancement pour le net.
+    const failedRefCfgs = campaignRefs.filter(
+      (r) => r.role === "failed" && r.step_type === "mm_event" && r.event_ns
+    );
 
     // Fusionne des breakdowns par pays : somme count + total, garde le rate
     // (cohérent par pays par hypothèse).
@@ -551,30 +555,48 @@ export async function GET(
       };
     }
 
-    // Step synthétique "Échec" (toujours 1 seul event failed).
+    // ComputedRef de chaque event failed (count + coût Meta + pays).
+    const failedRefs: ComputedRef[] = [];
+    for (const cfg of failedRefCfgs) {
+      failedRefs.push(
+        await computeRef({
+          id: "synth-failed",
+          step_id: "synth-failed",
+          ref_position: 0,
+          step_type: "mm_event",
+          event_ns: cfg.event_ns,
+          redirect_event_id: null,
+          event_school_slug: cfg.event_school_slug,
+        })
+      );
+    }
+
+    // Step synthétique "Échec" = cumul de tous les events d'échec.
     let failedStep: ComputedStep | null = null;
-    if (
-      failedRefCfg &&
-      failedRefCfg.step_type === "mm_event" &&
-      failedRefCfg.event_ns
-    ) {
-      const cr = await computeRef({
-        id: "synth-failed",
-        step_id: "synth-failed",
-        ref_position: 0,
-        step_type: "mm_event",
-        event_ns: failedRefCfg.event_ns,
-        redirect_event_id: null,
-        event_school_slug: failedRefCfg.event_school_slug,
-      });
+    if (failedRefs.length > 0) {
+      const anyAvail = failedRefs.some((r) => r.available);
+      const failedBreakdown = mergeCountryBreakdowns(
+        failedRefs.map((r) => r.meta_breakdown)
+      );
+      const failedCountSum = failedRefs.reduce(
+        (s, r) => s + (r.available ? r.count : 0),
+        0
+      );
+      const failedCost = failedRefs.reduce(
+        (s, r) => s + (r.meta_cost_eur ?? 0),
+        0
+      );
+      const cumulLabel = failedRefs.map((r) => r.label).join(" + ");
       failedStep = {
         position: 0,
-        label: `Échec : ${cr.label}`,
-        count: cr.available ? cr.count : 0,
-        available: cr.available,
-        refs: [cr],
-        meta_cost_eur: cr.meta_cost_eur ?? null,
-        ...(cr.meta_breakdown ? { meta_breakdown: cr.meta_breakdown } : {}),
+        label: `Échec : ${cumulLabel}`,
+        count: anyAvail ? failedCountSum : 0,
+        available: anyAvail,
+        refs: failedRefs,
+        meta_cost_eur: failedBreakdown.length > 0 ? failedCost : null,
+        ...(failedBreakdown.length > 0
+          ? { meta_breakdown: failedBreakdown }
+          : {}),
         synth_role: "failed",
       };
     }
@@ -628,14 +650,19 @@ export async function GET(
           })),
         },
         failed:
-          failedRefCfg && failedRefCfg.event_ns
+          failedRefCfgs.length > 0
             ? {
                 count: failedCount,
                 label:
-                  (failedStep?.label ?? "").replace(/^Échec\s*:\s*/, "") ||
-                  "(indisponible)",
-                event_ns: failedRefCfg.event_ns,
-                event_school_slug: failedRefCfg.event_school_slug ?? null,
+                  failedRefs.length > 1
+                    ? `Cumul de ${failedRefs.length} events`
+                    : failedRefs[0]?.label ?? "(indisponible)",
+                events: failedRefCfgs.map((cfg, i) => ({
+                  event_ns: cfg.event_ns!,
+                  event_school_slug: cfg.event_school_slug,
+                  label: failedRefs[i]?.label ?? cfg.event_ns!,
+                  count: failedRefs[i]?.available ? failedRefs[i].count : 0,
+                })),
               }
             : null,
         net_count: netCount,

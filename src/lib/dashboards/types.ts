@@ -112,8 +112,9 @@ export interface ComputedStep {
  *   - la campagne a un event de lancement (role='launch') défini.
  *
  * - launch        : tout ce qui sort de l'event de lancement (envois bruts).
- * - failed        : count des occurrences de l'event role='failed' s'il
- *                   existe (sinon null).
+ * - failed        : count cumulé des occurrences des events role='failed'
+ *                   s'il en existe (sinon null). Plusieurs events possibles,
+ *                   leurs counts se somment (symétrique du launch).
  * - net_count     : max(0, launch.count - failed.count).
  * - net_cost_eur  : launch.cost_eur scaled par net_count / launch.count.
  * - net_breakdown : breakdown du launch scaled au même ratio.
@@ -141,10 +142,20 @@ export interface CampaignCostSummary {
     }>;
   };
   failed: {
+    /** Volume cumulé de TOUS les events failed. */
     count: number;
+    /** Label affichable du failed (cumul : nom de l'event seul si un seul,
+     *  « Cumul de N events » sinon ; chip école en EDH). */
     label: string;
-    event_ns: string;
-    event_school_slug: string | null;
+    /** Détail par event failed (cumul). Au moins 1 élément quand `failed`
+     *  est renseigné. Sert au select inline du builder (≤1 event) et à
+     *  l'affichage read-only des chips (≥2 events). */
+    events: Array<{
+      event_ns: string;
+      event_school_slug: string | null;
+      label: string;
+      count: number;
+    }>;
   } | null;
   net_count: number;
   net_cost_eur: number;

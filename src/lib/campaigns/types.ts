@@ -2,11 +2,12 @@ import type { StepType } from "@/lib/dashboards/types";
 
 /**
  * Rôle d'une ref dans une campagne (Phase 25+) :
- *  - 'launch' : event de lancement (optionnel, au plus 1 par campagne,
- *    doit être porteur de tel). Sert de référence pour le coût Meta.
+ *  - 'launch' : event de lancement (optionnel, plusieurs possibles cumulés,
+ *    doivent être porteurs de tel). Sert de référence pour le coût Meta.
  *  - 'body'   : brique du funnel (drag-and-drop côté builder).
- *  - 'failed' : event "échec d'envoi WhatsApp" (optionnel, au plus 1).
- *    Soustrait du launch pour calculer les envois réussis.
+ *  - 'failed' : event "échec d'envoi WhatsApp" (optionnel, plusieurs
+ *    possibles cumulés). Leur count cumulé est soustrait du launch pour
+ *    calculer les envois réussis.
  */
 export type CampaignRefRole = "launch" | "body" | "failed";
 
