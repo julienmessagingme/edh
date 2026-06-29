@@ -195,6 +195,8 @@ Quatrième sous-onglet de Stats (`[URLs] [Stats] [Mes tableaux] [Campagnes]`). U
 - Une campagne `Partagée` est visible par tous les utilisateurs ayant accès à l'école (ou à EDH groupe) — mais reste éditable et supprimable uniquement par son auteur (ou un administrateur). Les autres utilisateurs peuvent l'utiliser comme filtre de palette.
 - Scope école strict : une campagne créée sur EFAP n'apparaît que pour les users qui ont EFAP comme école courante. Une campagne créée en mode EDH n'apparaît qu'en mode EDH (et peut mixer des briques des 9 écoles dans le même sac).
 
+**Suivi du coût Meta (envois WhatsApp)** : au-delà des briques du funnel, une campagne peut désigner des **events de lancement** (les envois WhatsApp porteurs du numéro de tél des destinataires) et des **events « failed »** (échecs d'envoi). Le builder affiche alors une **synthèse coût Meta** : envois lancés, failed, **envois réussis** (lancés − failed) et **coût net Meta** estimé par indicatif pays (cliquable pour le détail). Les events de lancement **comme** les events failed se **cumulent** : on peut en désigner plusieurs, leurs volumes (et coûts) se somment. La gestion se fait soit en inline dans le builder (0 ou 1 event par rôle), soit via la modale « Modifier les briques » (2+ events, affichés en chips). Les briques du funnel, elles, restent distinctes de ces deux rôles (un event ne peut pas être à la fois lancement, failed et étape).
+
 **Statut :** ✅ livré.
 
 ## Administration des utilisateurs
