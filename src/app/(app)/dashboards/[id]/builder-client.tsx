@@ -279,9 +279,9 @@ export function BuilderClient({
       // `displayedPalette` (qui sert uniquement à l'affichage palette
       // sidebar + dropdown "+ Ajouter").
       const [dRes, pRes, cRes] = await Promise.all([
-        fetch(`/api/dashboards/${dashboardId}`),
-        fetch(`/api/dashboards/palette`),
-        fetch(`/api/campaigns`),
+        fetch(`/api/dashboards/${dashboardId}`, { cache: "no-store" }),
+        fetch(`/api/dashboards/palette`, { cache: "no-store" }),
+        fetch(`/api/campaigns`, { cache: "no-store" }),
       ]);
       if (dRes.status === 404) {
         toast.error("Tableau introuvable");
@@ -331,7 +331,9 @@ export function BuilderClient({
     let alive = true;
     (async () => {
       try {
-        const r = await fetch(`/api/campaigns/${campaignFilter}`);
+        const r = await fetch(`/api/campaigns/${campaignFilter}`, {
+          cache: "no-store",
+        });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const { campaign } = (await r.json()) as { campaign: CampaignWithRefs };
         if (!alive) return;

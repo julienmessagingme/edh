@@ -68,14 +68,18 @@ export function CampaignEditorDialog({
     setLoading(true);
     (async () => {
       try {
-        const pRes = await fetch("/api/dashboards/palette");
+        const pRes = await fetch("/api/dashboards/palette", {
+          cache: "no-store",
+        });
         if (!pRes.ok) throw new Error("palette");
         const pJson = (await pRes.json()) as Palette;
         if (!alive) return;
         setPalette(pJson);
 
         if (mode === "edit" && campaignId) {
-          const cRes = await fetch(`/api/campaigns/${campaignId}`);
+          const cRes = await fetch(`/api/campaigns/${campaignId}`, {
+            cache: "no-store",
+          });
           if (!cRes.ok) throw new Error("campaign");
           const { campaign } = (await cRes.json()) as {
             campaign: CampaignWithRefs;

@@ -63,8 +63,15 @@ export function StatsClient() {
     setLoading(true);
     try {
       const [evRes, urlRes] = await Promise.all([
-        fetch(`/api/stats/custom-events?from=${from}&to=${to}`),
-        fetch(`/api/stats/redirects?from=${from}&to=${to}`),
+        // no-store : le scope école vient du cookie (URL identique entre
+        // écoles) → sans ça le navigateur ressert les stats de l'école
+        // précédente au switch.
+        fetch(`/api/stats/custom-events?from=${from}&to=${to}`, {
+          cache: "no-store",
+        }),
+        fetch(`/api/stats/redirects?from=${from}&to=${to}`, {
+          cache: "no-store",
+        }),
       ]);
       const evJson = (await evRes.json()) as {
         events?: MmEventListItem[];

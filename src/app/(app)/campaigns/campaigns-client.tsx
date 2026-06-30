@@ -19,7 +19,7 @@ export function CampaignsClient() {
   async function load() {
     setLoading(true);
     try {
-      const r = await fetch("/api/campaigns");
+      const r = await fetch("/api/campaigns", { cache: "no-store" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const j = (await r.json()) as { campaigns: CampaignListItem[] };
       setCampaigns(j.campaigns ?? []);

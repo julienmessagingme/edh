@@ -35,7 +35,9 @@ export function CampaignPageClient({ campaignId }: { campaignId: string }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch(`/api/campaigns/${campaignId}`);
+      const r = await fetch(`/api/campaigns/${campaignId}`, {
+        cache: "no-store",
+      });
       if (r.status === 404) {
         toast.error("Campagne introuvable");
         router.replace("/campaigns");

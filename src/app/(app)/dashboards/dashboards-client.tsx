@@ -18,7 +18,7 @@ export function DashboardsClient() {
   async function load() {
     setLoading(true);
     try {
-      const r = await fetch("/api/dashboards");
+      const r = await fetch("/api/dashboards", { cache: "no-store" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const j = (await r.json()) as { dashboards: Dashboard[] };
       setDashboards(j.dashboards ?? []);
