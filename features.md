@@ -197,6 +197,8 @@ Quatrième sous-onglet de Stats (`[URLs] [Stats] [Mes tableaux] [Campagnes]`). U
 
 **Suivi du coût Meta (envois WhatsApp)** : au-delà des briques du funnel, une campagne peut désigner des **events de lancement** (les envois WhatsApp porteurs du numéro de tél des destinataires) et des **events « failed »** (échecs d'envoi). Le builder affiche alors une **synthèse coût Meta** : envois lancés, failed, **envois réussis** (lancés − failed) et **coût net Meta** estimé par indicatif pays (cliquable pour le détail). Les events de lancement **comme** les events failed se **cumulent** : on peut en désigner plusieurs, leurs volumes (et coûts) se somment. La gestion se fait soit en inline dans le builder (0 ou 1 event par rôle), soit via la modale « Modifier les briques » (2+ events, affichés en chips). Les briques du funnel, elles, restent distinctes de ces deux rôles (un event ne peut pas être à la fois lancement, failed et étape).
 
+Les étapes **Lancement** et **Échec** affichées dans le funnel sont nommées automatiquement (« Lancement : <events> »), mais on peut leur donner un **nom personnalisé** via le champ au-dessus de leurs chips dans le builder (laisser vide = nom auto). Idem pour les étapes normales : leur nom est éditable et se répercute dans le tableau et le graphe.
+
 **Statut :** ✅ livré.
 
 ## Administration des utilisateurs
