@@ -962,40 +962,73 @@ export function BuilderClient({
               // en haut, AVANT les étapes du funnel (c'est lui qui
               // déclenche tout). Le failed est rendu en bas via bottomSlot.
               campaignId && computed?.campaign_summary ? (
-                <RoleEventsInline
-                  events={computed.campaign_summary.launch.events}
-                  role="launch"
-                  label="Event de lancement"
-                  manageLabel="Events de lancement"
-                  campaignId={campaignId}
-                  items={palette.mmEvents.filter(
-                    (p) => p.has_text_value === true
-                  )}
-                  emptyMessage="Aucun event porteur de tel disponible."
-                  readOnly={readOnly}
-                  onChanged={async () => {
-                    await fetchData();
-                    setLocalRefsBump((v) => v + 1);
-                  }}
-                />
+                <div className="space-y-2 mb-3 last:mb-0">
+                  <SynthStepLabelField
+                    roleTitle="Lancement"
+                    field="launch_label"
+                    value={computed.campaign_summary.launch.custom_label ?? ""}
+                    autoLabel={`Lancement : ${computed.campaign_summary.launch.events
+                      .map((e) => e.label)
+                      .join(" + ")}`}
+                    campaignId={campaignId}
+                    readOnly={readOnly}
+                    onSaved={fetchData}
+                  />
+                  <RoleEventsInline
+                    events={computed.campaign_summary.launch.events}
+                    role="launch"
+                    label="Event de lancement"
+                    manageLabel="Events de lancement"
+                    campaignId={campaignId}
+                    items={palette.mmEvents.filter(
+                      (p) => p.has_text_value === true
+                    )}
+                    emptyMessage="Aucun event porteur de tel disponible."
+                    readOnly={readOnly}
+                    onChanged={async () => {
+                      await fetchData();
+                      setLocalRefsBump((v) => v + 1);
+                    }}
+                  />
+                </div>
               ) : null
             }
             bottomSlot={
               campaignId && computed?.campaign_summary ? (
-                <RoleEventsInline
-                  events={computed.campaign_summary.failed?.events ?? []}
-                  role="failed"
-                  label="Event failed WhatsApp"
-                  manageLabel="Events failed WhatsApp"
-                  campaignId={campaignId}
-                  items={palette.mmEvents}
-                  emptyMessage="Aucun event MM disponible."
-                  readOnly={readOnly}
-                  onChanged={async () => {
-                    await fetchData();
-                    setLocalRefsBump((v) => v + 1);
-                  }}
-                />
+                <div className="space-y-2 mt-3 last:mt-3">
+                  {(computed.campaign_summary.failed?.events.length ?? 0) >
+                    0 && (
+                    <SynthStepLabelField
+                      roleTitle="Échec"
+                      field="failed_label"
+                      value={
+                        computed.campaign_summary.failed?.custom_label ?? ""
+                      }
+                      autoLabel={`Échec : ${(
+                        computed.campaign_summary.failed?.events ?? []
+                      )
+                        .map((e) => e.label)
+                        .join(" + ")}`}
+                      campaignId={campaignId}
+                      readOnly={readOnly}
+                      onSaved={fetchData}
+                    />
+                  )}
+                  <RoleEventsInline
+                    events={computed.campaign_summary.failed?.events ?? []}
+                    role="failed"
+                    label="Event failed WhatsApp"
+                    manageLabel="Events failed WhatsApp"
+                    campaignId={campaignId}
+                    items={palette.mmEvents}
+                    emptyMessage="Aucun event MM disponible."
+                    readOnly={readOnly}
+                    onChanged={async () => {
+                      await fetchData();
+                      setLocalRefsBump((v) => v + 1);
+                    }}
+                  />
+                </div>
               ) : null
             }
           >
@@ -1277,6 +1310,68 @@ function RoleEventsInline({
       readOnly={readOnly}
       onChanged={onChanged}
     />
+  );
+}
+
+/** Champ de renommage d'un step synthétique (Lancement / Échec) d'une
+ *  campagne. Ces steps sont générés à la volée (pas dans dashboard_steps),
+ *  leur nom vit donc au niveau campagne (launch_label / failed_label).
+ *  Sauvegarde sur blur ; vide = nom automatique « Lancement : … ». */
+function SynthStepLabelField({
+  roleTitle,
+  field,
+  value,
+  autoLabel,
+  campaignId,
+  readOnly,
+  onSaved,
+}: {
+  roleTitle: string;
+  field: "launch_label" | "failed_label";
+  value: string;
+  autoLabel: string;
+  campaignId: string;
+  readOnly?: boolean;
+  onSaved: () => Promise<void> | void;
+}) {
+  const [local, setLocal] = useState(value);
+  useEffect(() => {
+    setLocal(value);
+  }, [value]);
+  const [busy, setBusy] = useState(false);
+  async function save() {
+    // No-op si pas de changement réel (évite un PATCH à chaque blur).
+    if ((local.trim() || null) === (value.trim() || null)) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/campaigns/${campaignId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ [field]: local.trim() || null }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      await onSaved();
+    } catch {
+      toast.error("Impossible d'enregistrer le nom de l'étape");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <label className="block space-y-1">
+      <span className="text-[10px] uppercase text-zinc-500 font-semibold tracking-wide">
+        Nom de l&apos;étape « {roleTitle} »
+      </span>
+      <Input
+        value={local}
+        onChange={(e) => setLocal(e.target.value)}
+        onBlur={save}
+        placeholder={autoLabel}
+        disabled={busy || readOnly}
+        title="Nom affiché dans le tableau (laissez vide pour le nom automatique)"
+        className="h-8 text-sm bg-white"
+      />
+    </label>
   );
 }
 

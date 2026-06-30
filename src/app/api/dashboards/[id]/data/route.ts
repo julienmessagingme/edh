@@ -159,6 +159,9 @@ export async function GET(
     role: "launch" | "body" | "failed";
   };
   let campaignRefs: CampaignRefRow[] = [];
+  // Noms personnalisés des steps synthétiques (migration 016). NULL = auto.
+  let launchLabelCustom: string | null = null;
+  let failedLabelCustom: string | null = null;
   if (dash.campaign_id) {
     const { data: cRefs } = await sb
       .from("campaign_refs")
@@ -167,6 +170,16 @@ export async function GET(
       )
       .eq("campaign_id", dash.campaign_id);
     campaignRefs = (cRefs ?? []) as CampaignRefRow[];
+
+    const { data: campLabels } = await sb
+      .from("campaigns")
+      .select("launch_label, failed_label")
+      .eq("id", dash.campaign_id)
+      .maybeSingle();
+    launchLabelCustom =
+      ((campLabels?.launch_label as string | null) ?? "").trim() || null;
+    failedLabelCustom =
+      ((campLabels?.failed_label as string | null) ?? "").trim() || null;
   }
 
   // Pour chaque mm_event ref, l'école est event_school_slug en mode EDH,
@@ -543,7 +556,7 @@ export async function GET(
       const cumulLabel = launchRefs.map((r) => r.label).join(" + ");
       launchStep = {
         position: 0, // renuméroté en bas
-        label: `Lancement : ${cumulLabel}`,
+        label: launchLabelCustom ?? `Lancement : ${cumulLabel}`,
         count: anyAvail ? launchCount : 0,
         available: anyAvail,
         refs: launchRefs,
@@ -589,7 +602,7 @@ export async function GET(
       const cumulLabel = failedRefs.map((r) => r.label).join(" + ");
       failedStep = {
         position: 0,
-        label: `Échec : ${cumulLabel}`,
+        label: failedLabelCustom ?? `Échec : ${cumulLabel}`,
         count: anyAvail ? failedCountSum : 0,
         available: anyAvail,
         refs: failedRefs,
@@ -642,6 +655,7 @@ export async function GET(
             launchRefs.length > 1
               ? `Cumul de ${launchRefs.length} events`
               : launchRefs[0]?.label ?? "Lancement",
+          custom_label: launchLabelCustom,
           events: launchRefCfgs.map((cfg, i) => ({
             event_ns: cfg.event_ns!,
             event_school_slug: cfg.event_school_slug,
@@ -657,6 +671,7 @@ export async function GET(
                   failedRefs.length > 1
                     ? `Cumul de ${failedRefs.length} events`
                     : failedRefs[0]?.label ?? "(indisponible)",
+                custom_label: failedLabelCustom,
                 events: failedRefCfgs.map((cfg, i) => ({
                   event_ns: cfg.event_ns!,
                   event_school_slug: cfg.event_school_slug,

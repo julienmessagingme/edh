@@ -130,6 +130,10 @@ export interface CampaignCostSummary {
     /** Label affichable du lancement (cumul : nom de l'event seul si un
      *  seul, « Cumul de N events » sinon ; chip école en EDH). */
     label: string;
+    /** Nom personnalisé du step synthétique « Lancement » (campaigns.
+     *  launch_label), NULL si label auto. Sert au champ de renommage du
+     *  builder ; le step lui-même (table/chart) utilise déjà ce nom. */
+    custom_label: string | null;
     /** Détail par event de lancement (cumul, Phase 28.x). Au moins 1
      *  élément quand la synthèse est renseignée. Sert aux selects inline
      *  du builder (matcher la palette key + envoyer un PATCH) et à
@@ -147,6 +151,9 @@ export interface CampaignCostSummary {
     /** Label affichable du failed (cumul : nom de l'event seul si un seul,
      *  « Cumul de N events » sinon ; chip école en EDH). */
     label: string;
+    /** Nom personnalisé du step synthétique « Échec » (campaigns.
+     *  failed_label), NULL si label auto. */
+    custom_label: string | null;
     /** Détail par event failed (cumul). Au moins 1 élément quand `failed`
      *  est renseigné. Sert au select inline du builder (≤1 event) et à
      *  l'affichage read-only des chips (≥2 events). */

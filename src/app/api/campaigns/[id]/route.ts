@@ -28,6 +28,9 @@ const PatchBody = z
   .object({
     name: z.string().trim().min(1).max(200).optional(),
     is_shared: z.boolean().optional(),
+    // Noms personnalisés des steps synthétiques (null = label auto).
+    launch_label: z.string().trim().max(200).nullable().optional(),
+    failed_label: z.string().trim().max(200).nullable().optional(),
     refs: z.array(RefSchema).max(200).optional(),
   })
   .refine((b) => Object.keys(b).length > 0, "empty patch");
@@ -162,6 +165,11 @@ export async function PATCH(
   if (parsed.data.name !== undefined) fields.name = parsed.data.name;
   if (parsed.data.is_shared !== undefined)
     fields.is_shared = parsed.data.is_shared;
+  // Trim → null si vide, pour retomber sur le label auto côté data route.
+  if (parsed.data.launch_label !== undefined)
+    fields.launch_label = parsed.data.launch_label?.trim() || null;
+  if (parsed.data.failed_label !== undefined)
+    fields.failed_label = parsed.data.failed_label?.trim() || null;
 
   // Mise à jour de campaigns : on update updated_at dès que l'utilisateur
   // a touché à quelque chose (incluant les refs), pour que la card
