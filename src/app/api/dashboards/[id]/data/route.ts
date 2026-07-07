@@ -52,7 +52,7 @@ function nextDay(isoDate: string): string {
 }
 
 export async function GET(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
   let user;
@@ -121,10 +121,17 @@ export async function GET(
 
   const stepRows = (stepsData ?? []) as StepRow[];
 
+  // La période de l'UI (query params) prime sur celle sauvegardée en base : l'aperçu
+  // reflète la période choisie IMMÉDIATEMENT, sans qu'il faille l'enregistrer d'abord.
+  // Sans param valide -> on retombe sur la valeur stockée (compat + 1er chargement).
+  const qs = new URL(req.url).searchParams;
+  const qsPreset = qs.get("preset");
+  const useQs =
+    qsPreset === "7d" || qsPreset === "30d" || qsPreset === "90d" || qsPreset === "custom";
   const { from, to } = resolveDateRange({
-    preset: dash.date_preset,
-    from: dash.date_from,
-    to: dash.date_to,
+    preset: useQs ? (qsPreset as DatePreset) : dash.date_preset,
+    from: useQs ? qs.get("from") : dash.date_from,
+    to: useQs ? qs.get("to") : dash.date_to,
   });
   const fromTs = `${from}T00:00:00Z`;
   const toTs = `${nextDay(to)}T00:00:00Z`;

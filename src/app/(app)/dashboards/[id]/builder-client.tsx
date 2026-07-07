@@ -185,8 +185,17 @@ export function BuilderClient({
   const [paletteCollapsed, setPaletteCollapsed] = useState(false);
   const [stepsCollapsed, setStepsCollapsed] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dataAbort = useRef<AbortController | null>(null);
   const exportRef = useRef<HTMLDivElement>(null);
+  // Période courante de l'UI, envoyée en query params à /data. Ref (pas state) :
+  // mise à jour SYNCHRONE dans les handlers de date -> le refetch voit la nouvelle
+  // période tout de suite, sans attendre un re-render ni la sauvegarde.
+  const rangeRef = useRef<{ preset: DatePreset; from: string | null; to: string | null }>({
+    preset: "30d",
+    from: null,
+    to: null,
+  });
   const [exporting, setExporting] = useState(false);
 
   // Miroir de can_edit pour le garde-fou de `persist` : un viewer en lecture
@@ -249,10 +258,14 @@ export function BuilderClient({
     setComputing(true);
     setComputeError(false);
     try {
-      const r = await fetch(`/api/dashboards/${dashboardId}/data`, {
+      // La période courante de l'UI part en query params (prioritaire sur la base) :
+      // le graphe reflète la période choisie SANS attendre la sauvegarde. no-store
+      // car même URL de base -> évite un cache navigateur périmé.
+      const { preset, from, to } = rangeRef.current;
+      const qp = new URLSearchParams({ preset });
+      if (preset === "custom" && from && to) { qp.set("from", from); qp.set("to", to); }
+      const r = await fetch(`/api/dashboards/${dashboardId}/data?${qp}`, {
         signal: ctrl.signal,
-        // no-store : la date est côté serveur (même URL) -> sans ça le navigateur
-        // peut resservir une réponse en cache et le graphe ne se met pas à jour.
         cache: "no-store",
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -265,6 +278,13 @@ export function BuilderClient({
       if (dataAbort.current === ctrl) setComputing(false);
     }
   }, [dashboardId]);
+
+  // Rafraîchit l'aperçu depuis la période courante (query params), sans dépendre de
+  // la sauvegarde -> chiffres à jour dès le changement de date (fini le "re-trifouiller").
+  const refreshPreview = useCallback(() => {
+    if (previewTimer.current) clearTimeout(previewTimer.current);
+    previewTimer.current = setTimeout(() => void fetchData(), 250);
+  }, [fetchData]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -293,6 +313,13 @@ export function BuilderClient({
       if (!pRes.ok) throw new Error("HTTP");
       const pJson = (await pRes.json()) as Palette;
       setDashboard(dJson.dashboard);
+      // Initialise la période courante AVANT le 1er fetchData (sinon il partirait
+      // sur le défaut au lieu de la période sauvegardée).
+      rangeRef.current = {
+        preset: dJson.dashboard.date_preset,
+        from: dJson.dashboard.date_from,
+        to: dJson.dashboard.date_to,
+      };
       setPalette(pJson);
       // Campagnes : si l'API échoue (404, droits, etc.) on dégrade
       // silencieusement vers liste vide — le module est secondaire.
@@ -387,27 +414,28 @@ export function BuilderClient({
   }
 
   function updatePreset(preset: DatePreset) {
+    const from = preset === "custom" ? dashboard?.date_from ?? null : null;
+    const to = preset === "custom" ? dashboard?.date_to ?? null : null;
     setDashboard((d) =>
-      d
-        ? {
-            ...d,
-            date_preset: preset,
-            date_from: preset === "custom" ? d.date_from : null,
-            date_to: preset === "custom" ? d.date_to : null,
-          }
-        : d
+      d ? { ...d, date_preset: preset, date_from: from, date_to: to } : d
     );
-    persist({
-      date_preset: preset,
-      date_from: preset === "custom" ? dashboard?.date_from ?? null : null,
-      date_to: preset === "custom" ? dashboard?.date_to ?? null : null,
-    });
+    // Aperçu IMMÉDIAT (query params) + sauvegarde en tâche de fond, découplés.
+    rangeRef.current = { preset, from, to };
+    refreshPreview();
+    persist({ date_preset: preset, date_from: from, date_to: to });
   }
 
   function updateCustomDate(field: "date_from" | "date_to", value: string) {
     setDashboard((d) =>
       d ? { ...d, date_preset: "custom", [field]: value || null } : d
     );
+    const cur = rangeRef.current;
+    rangeRef.current = {
+      preset: "custom",
+      from: field === "date_from" ? value || null : cur.from,
+      to: field === "date_to" ? value || null : cur.to,
+    };
+    refreshPreview();
     persist({
       date_preset: "custom",
       [field]: value || null,
