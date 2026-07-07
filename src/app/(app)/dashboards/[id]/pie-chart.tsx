@@ -5,7 +5,6 @@ import {
   Pie,
   Cell,
   Tooltip,
-  Legend,
   ResponsiveContainer,
 } from "recharts";
 import type { ComputedStep } from "@/lib/dashboards/types";
@@ -58,49 +57,65 @@ export function PieChartViz({ steps }: { steps: ComputedStep[] }) {
 
   const total = data.reduce((acc, d) => acc + d.count, 0);
 
+  // Le camembert occupe toute la largeur (cx 50%), la légende est rendue
+  // SOUS le graphe en HTML : elle passe à la ligne toute seule et ne peut
+  // plus rogner ni pousser le pie hors cadre (bug légende recharts à droite).
   return (
-    <div className="w-full" style={{ height: 360 }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <RPieChart>
-          <Pie
-            data={data}
-            dataKey="count"
-            nameKey="label"
-            cx="40%"
-            cy="50%"
-            outerRadius={120}
-            innerRadius={0}
-            paddingAngle={1}
-            label={({ percent }) =>
-              percent !== undefined && percent > 0.05
-                ? `${(percent * 100).toFixed(1)}%`
-                : ""
-            }
-            labelLine={false}
+    <div className="w-full">
+      <div className="w-full" style={{ height: 300 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <RPieChart>
+            <Pie
+              data={data}
+              dataKey="count"
+              nameKey="label"
+              cx="50%"
+              cy="50%"
+              outerRadius={110}
+              innerRadius={0}
+              paddingAngle={1}
+              label={({ percent }) =>
+                percent !== undefined && percent > 0.05
+                  ? `${(percent * 100).toFixed(1)}%`
+                  : ""
+              }
+              labelLine={false}
+            >
+              {data.map((_, i) => (
+                <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip
+              formatter={(v: unknown, _name, payload) => {
+                const count = Number(v);
+                const pct =
+                  total > 0 ? ((count / total) * 100).toFixed(1) : "0";
+                return [
+                  `${count.toLocaleString("fr-FR")} (${pct} %)`,
+                  (payload?.payload as PieDatum | undefined)?.fullLabel ??
+                    "Volume",
+                ];
+              }}
+            />
+          </RPieChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Légende HTML sous le camembert : wrap naturel, jamais de débordement */}
+      <ul className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1.5">
+        {data.map((d, i) => (
+          <li
+            key={d.label}
+            className="flex items-center gap-1.5 text-xs text-zinc-600 max-w-full"
           >
-            {data.map((_, i) => (
-              <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-            ))}
-          </Pie>
-          <Tooltip
-            formatter={(v: unknown, _name, payload) => {
-              const count = Number(v);
-              const pct = total > 0 ? ((count / total) * 100).toFixed(1) : "0";
-              return [
-                `${count.toLocaleString("fr-FR")} (${pct} %)`,
-                (payload?.payload as PieDatum | undefined)?.fullLabel ??
-                  "Volume",
-              ];
-            }}
-          />
-          <Legend
-            layout="vertical"
-            align="right"
-            verticalAlign="middle"
-            wrapperStyle={{ fontSize: 12, lineHeight: "1.4" }}
-          />
-        </RPieChart>
-      </ResponsiveContainer>
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-sm"
+              style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}
+            />
+            <span className="truncate">{d.label}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
