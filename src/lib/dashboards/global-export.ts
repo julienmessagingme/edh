@@ -16,6 +16,12 @@ export interface GlobalReportLine {
   kind: "envois" | "echec" | "net" | "step";
   a: number;
   b: number | null;
+  /** Pourcentage de conversion (période A / B) selon la chaîne de bases :
+   *  envois = 100 %, échecs & net = % des envois, chaque étape = % des envois
+   *  hors échecs (ou de la 1re étape si le funnel n'a pas de lancement).
+   *  null quand la base est nulle (division impossible). */
+  pctA: number | null;
+  pctB: number | null;
 }
 
 export interface GlobalReportFunnel {
@@ -37,6 +43,12 @@ export interface GlobalReportMeta {
 }
 
 const fmt = (n: number): string => n.toLocaleString("fr-FR");
+
+/** Pourcentage de conversion en français (« 100 % », « 81,3 %»). Vide si null. */
+export function formatPct(p: number | null): string {
+  if (p == null) return "";
+  return `${p.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %`;
+}
 
 function fileSafeName(s: string): string {
   return (
@@ -136,25 +148,34 @@ export async function exportGlobalReportToPDF(
   pdf.line(margin, y, xRight, y);
   y += 18;
 
-  // Colonnes de valeurs (droite). En comparaison : A / B / Δ / Δ%.
+  // Colonnes de valeurs (droite).
+  //  - mode simple : Quantité + %
+  //  - comparaison : A / B / Écart / Écart % (le % de conversion A et B est
+  //    rendu en petit sous chaque compte, pas en colonne dédiée).
   const numColW = 58;
   const xA = xRight - numColW * 3;
   const xB = xRight - numColW * 2;
   const xD = xRight - numColW;
   const xP = xRight;
+  const xCount = xRight - numColW; // mode simple : compte
+  const xPct = xRight; // mode simple : %
 
   function drawColHeader() {
-    if (!meta.compare) return;
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(8);
     pdf.setTextColor(140);
     // NB : helvetica encode en WinAnsi (cp1252) → pas de « Δ » grec (il
     // sortirait cassé, cf. le même piège avec « → » dans export.ts). On
     // écrit « Écart » (les lettres accentuées, elles, sont dans cp1252).
-    pdf.text("A", xA, y, { align: "right" });
-    pdf.text("B", xB, y, { align: "right" });
-    pdf.text("Écart", xD, y, { align: "right" });
-    pdf.text("Écart %", xP, y, { align: "right" });
+    if (meta.compare) {
+      pdf.text("A", xA, y, { align: "right" });
+      pdf.text("B", xB, y, { align: "right" });
+      pdf.text("Écart", xD, y, { align: "right" });
+      pdf.text("Écart %", xP, y, { align: "right" });
+    } else {
+      pdf.text("Quantité", xCount, y, { align: "right" });
+      pdf.text("%", xPct, y, { align: "right" });
+    }
     y += 12;
   }
 
@@ -178,7 +199,7 @@ export async function exportGlobalReportToPDF(
   }
 
   const labelMaxW =
-    (meta.compare ? xA - numColW : xRight - 70) - margin - 16;
+    (meta.compare ? xA - numColW : xCount - numColW) - margin - 6;
 
   for (const f of funnels) {
     // Bandeau titre du funnel (frame propre) : rectangle gris clair + nom.
@@ -209,21 +230,39 @@ export async function exportGlobalReportToPDF(
         pdf.setFont("helvetica", bold ? "bold" : "normal");
         pdf.setFontSize(10.5);
         const lab = pdf.splitTextToSize(line.label, labelMaxW);
-        ensure(Math.max(lab.length * 13, 16) + 2);
+        // En comparaison, la ligne est plus haute : le % de conversion se
+        // glisse sous le compte A/B.
+        const rowH = Math.max(lab.length * 13, meta.compare ? 22 : 16);
+        ensure(rowH + 2);
 
         // Label
         if (line.kind === "echec") pdf.setTextColor(200, 60, 60);
         else pdf.setTextColor(bold ? 20 : 70);
         pdf.text(lab, margin + indent, y + 9);
 
-        // Valeurs
+        // Comptes
+        pdf.setFont("helvetica", bold ? "bold" : "normal");
+        pdf.setFontSize(10.5);
         if (line.kind === "echec") pdf.setTextColor(200, 60, 60);
         else pdf.setTextColor(bold ? 20 : 55);
+
         if (meta.compare) {
           pdf.text(fmt(line.a), xA, y + 9, { align: "right" });
           pdf.text(line.b == null ? "" : fmt(line.b), xB, y + 9, {
             align: "right",
           });
+          // % de conversion sous chaque compte (petit, gris).
+          const pa = formatPct(line.pctA);
+          const pb = formatPct(line.pctB);
+          if (pa || pb) {
+            pdf.setFont("helvetica", "normal");
+            pdf.setFontSize(7.5);
+            pdf.setTextColor(150);
+            if (pa) pdf.text(pa, xA, y + 18, { align: "right" });
+            if (pb) pdf.text(pb, xB, y + 18, { align: "right" });
+            pdf.setFontSize(10.5);
+          }
+          // Écart + écart %
           if (line.b != null) {
             const delta = line.a - line.b;
             const up = delta > 0;
@@ -234,17 +273,24 @@ export async function exportGlobalReportToPDF(
             pdf.text(`${up ? "+" : ""}${fmt(delta)}`, xD, y + 9, {
               align: "right",
             });
-            const pctStr =
+            const deltaPct =
               line.b > 0
                 ? `${up ? "+" : ""}${((delta / line.b) * 100).toFixed(1)} %`
                 : "n/a";
-            pdf.text(pctStr, xP, y + 9, { align: "right" });
+            pdf.text(deltaPct, xP, y + 9, { align: "right" });
           }
         } else {
-          pdf.text(fmt(line.a), xRight, y + 9, { align: "right" });
+          pdf.text(fmt(line.a), xCount, y + 9, { align: "right" });
+          const pa = formatPct(line.pctA);
+          if (pa) {
+            pdf.setFont("helvetica", "normal");
+            pdf.setFontSize(9);
+            pdf.setTextColor(120);
+            pdf.text(pa, xPct, y + 9, { align: "right" });
+          }
         }
         pdf.setTextColor(0);
-        y += Math.max(lab.length * 13, 16) + 2;
+        y += rowH + 2;
       }
     }
 

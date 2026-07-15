@@ -24,6 +24,7 @@ import {
 } from "@/lib/dashboards/period-presets";
 import {
   exportGlobalReportToPDF,
+  formatPct,
   type GlobalReportFunnel,
   type GlobalReportLine,
 } from "@/lib/dashboards/global-export";
@@ -37,6 +38,11 @@ type SinglePreset = "7" | "30" | "90" | "manual";
  * - Puis 1 ligne par étape (body steps, hors synthétiques launch/failed).
  * `dataB` non-null ⇒ mode comparaison (chaque ligne porte aussi sa valeur B).
  */
+/** v / base × 100, ou null si base nulle (division impossible). */
+function pctOf(v: number, base: number): number | null {
+  return base > 0 ? (v / base) * 100 : null;
+}
+
 function buildFunnel(
   c: CampaignListItem,
   dataA: ComputedDashboardData,
@@ -46,38 +52,63 @@ function buildFunnel(
   const lines: GlobalReportLine[] = [];
   const sumA = dataA.campaign_summary ?? null;
   const sumB = dataB?.campaign_summary ?? null;
+  const hasLaunch = !!sumA?.launch;
+
+  const envoisA = sumA?.launch?.count ?? 0;
+  const envoisB = sumB?.launch?.count ?? 0;
+  const netA = sumA?.net_count ?? 0;
+  const netB = sumB?.net_count ?? 0;
+
+  const bodyA = dataA.steps.filter((s) => !s.synth_role);
+  const bodyB = dataB ? dataB.steps.filter((s) => !s.synth_role) : [];
+
+  // Base des % du corps du funnel : les envois hors échecs (net) deviennent le
+  // 100 % des étapes. Si le funnel n'a pas de lancement, on retombe sur la 1re
+  // étape comme base.
+  const baseA = hasLaunch ? netA : bodyA[0]?.count ?? 0;
+  const baseB = hasLaunch ? netB : bodyB[0]?.count ?? 0;
 
   if (sumA?.launch) {
     lines.push({
       label: "Nombre d'envois",
       kind: "envois",
-      a: sumA.launch.count,
-      b: cmp ? sumB?.launch?.count ?? 0 : null,
+      a: envoisA,
+      b: cmp ? envoisB : null,
+      pctA: envoisA > 0 ? 100 : null,
+      pctB: cmp ? (envoisB > 0 ? 100 : null) : null,
     });
     if (sumA.failed) {
+      const echA = sumA.failed.count;
+      const echB = sumB?.failed?.count ?? 0;
       lines.push({
         label: "Échecs WhatsApp",
         kind: "echec",
-        a: sumA.failed.count,
-        b: cmp ? sumB?.failed?.count ?? 0 : null,
+        a: echA,
+        b: cmp ? echB : null,
+        pctA: pctOf(echA, envoisA),
+        pctB: cmp ? pctOf(echB, envoisB) : null,
       });
     }
     lines.push({
       label: "Envois hors échecs",
       kind: "net",
-      a: sumA.net_count,
-      b: cmp ? sumB?.net_count ?? 0 : null,
+      a: netA,
+      b: cmp ? netB : null,
+      pctA: pctOf(netA, envoisA),
+      pctB: cmp ? pctOf(netB, envoisB) : null,
     });
   }
 
-  const bodyA = dataA.steps.filter((s) => !s.synth_role);
-  const bodyB = dataB ? dataB.steps.filter((s) => !s.synth_role) : [];
   bodyA.forEach((s, i) => {
+    const va = s.count;
+    const vb = bodyB[i]?.count ?? 0;
     lines.push({
       label: compactStepLabel(s),
       kind: "step",
-      a: s.count,
-      b: cmp ? bodyB[i]?.count ?? 0 : null,
+      a: va,
+      b: cmp ? vb : null,
+      pctA: pctOf(va, baseA),
+      pctB: cmp ? pctOf(vb, baseB) : null,
     });
   });
 
@@ -528,7 +559,12 @@ function FunnelFrame({
                     <th className="py-2 px-4 text-right font-medium">Δ %</th>
                   </>
                 ) : (
-                  <th className="py-2 px-4 text-right font-medium">Quantité</th>
+                  <>
+                    <th className="py-2 px-3 text-right font-medium">
+                      Quantité
+                    </th>
+                    <th className="py-2 px-4 text-right font-medium">%</th>
+                  </>
                 )}
               </tr>
             </thead>
@@ -558,12 +594,12 @@ function ReportRow({
       : line.kind === "step"
         ? "text-zinc-700 pl-8"
         : "text-zinc-900 font-medium";
-  const valueClass =
+  const countClass =
     line.kind === "echec"
       ? "text-red-600"
       : strong
-        ? "text-zinc-900 font-medium tabular-nums"
-        : "text-zinc-700 tabular-nums";
+        ? "text-zinc-900 font-medium"
+        : "text-zinc-700";
 
   const delta = line.b == null ? null : line.a - line.b;
   const deltaColor =
@@ -572,36 +608,54 @@ function ReportRow({
       : delta > 0
         ? "text-emerald-600"
         : "text-red-600";
-  const pct =
+  const deltaPct =
     line.b == null
       ? ""
       : line.b > 0
         ? `${delta! > 0 ? "+" : ""}${((delta! / line.b) * 100).toFixed(1)} %`
         : "n/a";
 
+  if (!compare) {
+    return (
+      <tr className="border-b last:border-0">
+        <td className={`py-1.5 px-4 ${labelClass}`}>{line.label}</td>
+        <td className={`py-1.5 px-3 text-right tabular-nums ${countClass}`}>
+          {line.a.toLocaleString("fr-FR")}
+        </td>
+        <td className="py-1.5 px-4 text-right tabular-nums text-xs text-zinc-400">
+          {formatPct(line.pctA)}
+        </td>
+      </tr>
+    );
+  }
+
   return (
-    <tr className="border-b last:border-0">
+    <tr className="border-b last:border-0 align-top">
       <td className={`py-1.5 px-4 ${labelClass}`}>{line.label}</td>
-      <td className={`py-1.5 px-3 text-right ${valueClass}`}>
-        {line.a.toLocaleString("fr-FR")}
+      <td className={`py-1.5 px-3 text-right ${countClass}`}>
+        <div className="tabular-nums">{line.a.toLocaleString("fr-FR")}</div>
+        <div className="text-[11px] text-zinc-400 tabular-nums">
+          {formatPct(line.pctA)}
+        </div>
       </td>
-      {compare && (
-        <>
-          <td className="py-1.5 px-3 text-right tabular-nums text-zinc-500">
-            {line.b == null ? "" : line.b.toLocaleString("fr-FR")}
-          </td>
-          <td
-            className={`py-1.5 px-3 text-right tabular-nums font-medium ${deltaColor}`}
-          >
-            {delta == null
-              ? ""
-              : `${delta > 0 ? "+" : ""}${delta.toLocaleString("fr-FR")}`}
-          </td>
-          <td className={`py-1.5 px-4 text-right tabular-nums ${deltaColor}`}>
-            {pct}
-          </td>
-        </>
-      )}
+      <td className="py-1.5 px-3 text-right text-zinc-500">
+        <div className="tabular-nums">
+          {line.b == null ? "" : line.b.toLocaleString("fr-FR")}
+        </div>
+        <div className="text-[11px] text-zinc-400 tabular-nums">
+          {formatPct(line.pctB)}
+        </div>
+      </td>
+      <td
+        className={`py-1.5 px-3 text-right tabular-nums font-medium ${deltaColor}`}
+      >
+        {delta == null
+          ? ""
+          : `${delta > 0 ? "+" : ""}${delta.toLocaleString("fr-FR")}`}
+      </td>
+      <td className={`py-1.5 px-4 text-right tabular-nums ${deltaColor}`}>
+        {deltaPct}
+      </td>
     </tr>
   );
 }
