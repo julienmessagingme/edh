@@ -50,21 +50,21 @@ export function CampaignsClient() {
       <header className="flex justify-between items-center">
         <SubNavStats />
         <Button onClick={() => setCreating(true)}>
-          + Nouvelle campagne
+          + Nouveau funnel
         </Button>
       </header>
 
-      <h2 className="text-xl font-semibold">Campagnes</h2>
+      <h2 className="text-xl font-semibold">Funnel</h2>
       <p className="text-sm text-zinc-500 -mt-2">
-        Une campagne regroupe des events MM et URLs trackées. Sert de filtre
-        pour la palette dans « Mes tableaux ».
+        Un funnel regroupe des events MM et URLs trackées en étapes ordonnées,
+        avec suivi du coût Meta (events de lancement / failed).
       </p>
 
       {loading ? (
         <p className="text-zinc-500">Chargement…</p>
       ) : campaigns.length === 0 ? (
         <p className="text-zinc-500">
-          Aucune campagne pour cette école. Cliquez sur « + Nouvelle campagne ».
+          Aucun funnel pour cette école. Cliquez sur « + Nouveau funnel ».
         </p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

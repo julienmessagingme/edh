@@ -779,7 +779,7 @@ export function BuilderClient({
                   variant="outline"
                   onClick={() => router.push("/campaigns")}
                 >
-                  ← Campagnes
+                  ← Funnel
                 </Button>
               </>
             ) : (

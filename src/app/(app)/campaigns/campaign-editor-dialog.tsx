@@ -256,7 +256,7 @@ export function CampaignEditorDialog({
         });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const { id } = (await r.json()) as { id: string };
-        toast.success("Campagne créée");
+        toast.success("Funnel créé");
         onCreated?.(id);
       } else if (campaignId) {
         const r = await fetch(`/api/campaigns/${campaignId}`, {
@@ -282,7 +282,7 @@ export function CampaignEditorDialog({
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col sm:!max-w-4xl">
         <DialogHeader className="shrink-0">
           <DialogTitle>
-            {mode === "new" ? "Nouvelle campagne" : "Éditer la campagne"}
+            {mode === "new" ? "Nouveau funnel" : "Éditer le funnel"}
           </DialogTitle>
         </DialogHeader>
 

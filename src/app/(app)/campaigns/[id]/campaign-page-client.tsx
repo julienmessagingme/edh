@@ -39,7 +39,7 @@ export function CampaignPageClient({ campaignId }: { campaignId: string }) {
         cache: "no-store",
       });
       if (r.status === 404) {
-        toast.error("Campagne introuvable");
+        toast.error("Funnel introuvable");
         router.replace("/campaigns");
         return;
       }
@@ -63,13 +63,13 @@ export function CampaignPageClient({ campaignId }: { campaignId: string }) {
           };
           setDashboardId(dashboard_id);
         } else {
-          toast.error("Impossible de créer le tableau de la campagne");
+          toast.error("Impossible de créer le tableau du funnel");
         }
       } else {
         // Campagne partagée pré-Phase-21 dont je ne suis pas owner →
         // je ne peux pas créer le dashboard. Cas rare ; on bloque proprement.
         toast.error(
-          "Cette campagne n'a pas encore de tableau et seul son auteur peut le créer."
+          "Ce funnel n'a pas encore de tableau et seul son auteur peut le créer."
         );
       }
     } catch {
@@ -131,7 +131,7 @@ export function CampaignPageClient({ campaignId }: { campaignId: string }) {
       <div className="bg-amber-50/40 border border-amber-200 rounded-lg p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs uppercase text-amber-800 font-semibold tracking-wide">
-            Campagne
+            Funnel
           </p>
           {saving && (
             <span className="text-xs text-zinc-500">Enregistrement…</span>
@@ -142,7 +142,7 @@ export function CampaignPageClient({ campaignId }: { campaignId: string }) {
           onChange={(e) => updateName(e.target.value)}
           disabled={!campaign.can_edit}
           className="text-lg font-semibold bg-white"
-          placeholder="Nom de la campagne"
+          placeholder="Nom du funnel"
         />
         <div className="flex items-center gap-2">
           <input
@@ -174,7 +174,7 @@ export function CampaignPageClient({ campaignId }: { campaignId: string }) {
         />
       ) : (
         <p className="text-zinc-500 text-sm">
-          Tableau non disponible pour cette campagne.
+          Tableau non disponible pour ce funnel.
         </p>
       )}
 

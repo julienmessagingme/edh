@@ -48,16 +48,16 @@ export function DashboardsClient() {
       <Toaster richColors position="top-right" />
       <header className="flex justify-between items-center">
         <SubNavStats />
-        <Button onClick={() => setOpenNew(true)}>+ Nouveau funnel</Button>
+        <Button onClick={() => setOpenNew(true)}>+ Nouveau pie chart</Button>
       </header>
 
-      <h2 className="text-xl font-semibold">Mes tableaux</h2>
+      <h2 className="text-xl font-semibold">Pie charts</h2>
 
       {loading ? (
         <p className="text-zinc-500">Chargement…</p>
       ) : dashboards.length === 0 ? (
         <p className="text-zinc-500">
-          Aucun tableau pour cette école. Cliquez sur « + Nouveau funnel ».
+          Aucun pie chart pour cette école. Cliquez sur « + Nouveau pie chart ».
         </p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

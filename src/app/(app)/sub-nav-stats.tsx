@@ -26,12 +26,12 @@ export function SubNavStats() {
     { href: "/stats", label: "Stats", match: (p) => p.startsWith("/stats") },
     {
       href: "/dashboards",
-      label: "Mes tableaux",
+      label: "Pie charts",
       match: (p) => p.startsWith("/dashboards"),
     },
     {
       href: "/campaigns",
-      label: "Campagnes",
+      label: "Funnel",
       match: (p) => p.startsWith("/campaigns"),
     }
   );

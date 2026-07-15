@@ -230,7 +230,7 @@ export function UserDialog({ mode, user, onClose, onSaved }: Props) {
               ))}
               <label
                 className="flex items-center gap-2 text-sm col-span-2 border-t pt-1.5 mt-1"
-                title="Donne accès à la vue agrégée toutes écoles (Stats EDH groupe + Mes tableaux EDH)"
+                title="Donne accès à la vue agrégée toutes écoles (Stats EDH groupe + Pie charts / Funnel EDH)"
               >
                 <input
                   type="checkbox"
