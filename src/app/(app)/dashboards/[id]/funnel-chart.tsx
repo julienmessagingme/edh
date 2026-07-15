@@ -1,5 +1,6 @@
 "use client";
 
+import { PieChart, Pie, Cell } from "recharts";
 import {
   BarChart,
   Bar,
@@ -159,27 +160,94 @@ export function FunnelChart({ steps: rawSteps }: { steps: ComputedStep[] }) {
         <BarXAxis showAllLabels tickerHalfWidth={70} wrap />
         <ChartTooltip
           showDots={false}
-          rows={(point) => {
+          content={({ point }) => {
             const total = Number(point.__total__ ?? 0);
-            // Total en tête (gris), puis chaque event présent dans cette
-            // étape avec sa couleur stable + son volume. Tri par volume
-            // décroissant.
-            const rows = series
+            // Segments présents dans l'étape survolée (volume > 0), triés
+            // décroissant. ≥2 sources → mini pie chart de la répartition ;
+            // sinon liste simple.
+            const slices = series
               .map((ser) => ({
-                color: ser.color,
                 label: ser.label,
+                color: ser.color,
                 value: Number(point[ser.label] ?? 0),
               }))
-              .filter((r) => r.value > 0)
-              .sort((a, b) => b.value - a.value)
-              .map((r) => ({ ...r, value: fmtNum(r.value) }));
-            return [
-              { color: "#71717a", label: "Total", value: fmtNum(total) },
-              ...rows,
-            ];
+              .filter((s) => s.value > 0)
+              .sort((a, b) => b.value - a.value);
+            return <StepTooltip total={total} slices={slices} />;
           }}
         />
       </BarChart>
+    </div>
+  );
+}
+
+type Slice = { label: string; color: string; value: number };
+
+/** Contenu du tooltip d'une barre du funnel. Si l'étape cumule ≥2 sources,
+ *  on rend un mini PIE CHART de la répartition (demande produit : voir d'un
+ *  coup d'œil le poids de chaque source dans le cumul) + une légende chiffrée.
+ *  Sinon (0 ou 1 source), simple liste. */
+function StepTooltip({ total, slices }: { total: number; slices: Slice[] }) {
+  const multi = slices.length >= 2;
+  return (
+    <div className="space-y-1.5" style={{ minWidth: multi ? 240 : 150 }}>
+      <div className="flex items-center justify-between gap-4 text-xs font-medium border-b pb-1">
+        <span className="text-zinc-500 uppercase tracking-wide text-[10px]">
+          Total
+        </span>
+        <span className="tabular-nums">{fmtNum(total)}</span>
+      </div>
+      {multi ? (
+        <div className="flex items-center gap-2">
+          <PieChart width={112} height={112}>
+            <Pie
+              data={slices}
+              dataKey="value"
+              nameKey="label"
+              cx="50%"
+              cy="50%"
+              outerRadius={52}
+              stroke="#fff"
+              strokeWidth={1}
+              isAnimationActive={false}
+            >
+              {slices.map((s, i) => (
+                <Cell key={i} fill={s.color} />
+              ))}
+            </Pie>
+          </PieChart>
+          <ul className="flex-1 space-y-0.5 text-[11px] max-h-[130px] overflow-auto pr-1">
+            {slices.map((s, i) => (
+              <li key={i} className="flex items-center gap-1.5">
+                <span
+                  className="h-2 w-2 rounded-sm shrink-0"
+                  style={{ background: s.color }}
+                />
+                <span className="flex-1 truncate max-w-[130px]">{s.label}</span>
+                <span className="tabular-nums text-zinc-700">
+                  {fmtNum(s.value)}
+                </span>
+                <span className="tabular-nums text-zinc-400 w-8 text-right">
+                  {total > 0 ? `${Math.round((s.value / total) * 100)}%` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <ul className="space-y-0.5 text-[11px]">
+          {slices.map((s, i) => (
+            <li key={i} className="flex items-center gap-1.5">
+              <span
+                className="h-2 w-2 rounded-sm shrink-0"
+                style={{ background: s.color }}
+              />
+              <span className="flex-1 truncate max-w-[170px]">{s.label}</span>
+              <span className="tabular-nums">{fmtNum(s.value)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
