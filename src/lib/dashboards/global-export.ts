@@ -42,12 +42,20 @@ export interface GlobalReportMeta {
   rangeB: { from: string; to: string } | null;
 }
 
-const fmt = (n: number): string => n.toLocaleString("fr-FR");
+// ⚠️ `toLocaleString('fr-FR')` groupe les milliers avec une ESPACE FINE
+// INSÉCABLE (U+202F) que la police helvetica de jsPDF (WinAnsi/cp1252) ne sait
+// pas encoder → « 4 322 » sortait « 4 / 3 2 2 » dans le PDF. On remplace toute
+// espace non-ASCII (\s couvre U+202F, U+00A0, U+2009…) par une espace normale,
+// qui, elle, est dans cp1252. Même famille de piège que « → » / « Δ ».
+const fmt = (n: number): string =>
+  n.toLocaleString("fr-FR").replace(/\s/g, " ");
 
-/** Pourcentage de conversion en français (« 100 % », « 81,3 %»). Vide si null. */
+/** Pourcentage de conversion en français (« 100 % », « 81,3 % »). Vide si null.
+ *  Espaces non-ASCII neutralisées (cf. `fmt`) pour rester encodable en PDF. */
 export function formatPct(p: number | null): string {
   if (p == null) return "";
-  return `${p.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %`;
+  const v = p.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+  return `${v.replace(/\s/g, " ")} %`;
 }
 
 function fileSafeName(s: string): string {
