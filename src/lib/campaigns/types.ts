@@ -39,6 +39,11 @@ export interface CampaignListItem extends Campaign {
    *  partagée est visible par tous les users de l'école mais éditable
    *  uniquement par son auteur (ou un admin). */
   can_edit: boolean;
+  /** Id du dashboard 1:1 lié (migration 010). NULL pour les campagnes
+   *  pré-Phase-21 qui n'ont pas encore leur tableau. Sert au rapport Global
+   *  pour récupérer les données de chaque funnel via `/api/dashboards/[id]/data`
+   *  sans un aller-retour supplémentaire par campagne. */
+  dashboard_id: string | null;
 }
 
 export interface CampaignWithRefs extends Campaign {

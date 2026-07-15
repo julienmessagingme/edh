@@ -62,9 +62,28 @@ export async function GET() {
     .maybeSingle();
   const isAdmin = !!meRow?.is_admin;
 
+  // dashboard_id de chaque campagne (relation 1:1, migration 010). Une seule
+  // requête `campaign_id IN (...)` puis mapping en mémoire. NULL pour les
+  // campagnes pré-Phase-21 sans tableau.
+  const campaignIds = (data ?? []).map((c) => c.id);
+  const dashByCampaign = new Map<string, string>();
+  if (campaignIds.length > 0) {
+    const { data: dashRows } = await sb
+      .from("dashboards")
+      .select("id, campaign_id")
+      .in("campaign_id", campaignIds);
+    for (const d of (dashRows ?? []) as {
+      id: string;
+      campaign_id: string;
+    }[]) {
+      dashByCampaign.set(d.campaign_id, d.id);
+    }
+  }
+
   const campaigns: CampaignListItem[] = (data ?? []).map((c) => ({
     ...(c as CampaignListItem),
     can_edit: isAdmin || c.created_by === user.userId,
+    dashboard_id: dashByCampaign.get(c.id) ?? null,
   }));
   return NextResponse.json({ campaigns });
 }

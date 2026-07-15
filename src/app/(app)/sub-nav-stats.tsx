@@ -33,6 +33,11 @@ export function SubNavStats() {
       href: "/campaigns",
       label: "Funnel",
       match: (p) => p.startsWith("/campaigns"),
+    },
+    {
+      href: "/global",
+      label: "Global",
+      match: (p) => p.startsWith("/global"),
     }
   );
 
