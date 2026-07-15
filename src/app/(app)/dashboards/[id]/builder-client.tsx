@@ -397,6 +397,16 @@ export function BuilderClient({
             body: JSON.stringify(body),
           });
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          // Mode campagne : le nom du tableau EST le nom du funnel (celui
+          // affiché dans la liste Funnel = campaigns.name). On le synchronise
+          // pour n'avoir qu'un seul nom éditable — celui du builder.
+          if (campaignId && typeof body.name === "string") {
+            await fetch(`/api/campaigns/${campaignId}`, {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ name: body.name }),
+            }).catch(() => {});
+          }
           // Refetch /data UNIQUEMENT après que le PATCH ait commité,
           // pour éviter la race où /data lit l'état d'avant le PATCH.
           void fetchData();
@@ -407,7 +417,7 @@ export function BuilderClient({
         }
       }, 500);
     },
-    [dashboardId, fetchData]
+    [dashboardId, fetchData, campaignId]
   );
 
   function updateName(name: string) {

@@ -27,16 +27,20 @@ function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** 2 derniers mois glissants : A = [J−1 mois → J], B = [J−2 mois → J−1 mois]. */
+/** 2 derniers mois glissants, SANS chevauchement de jour : A = [J−1 mois → J],
+ *  B = [J−2 mois → veille de J−1 mois]. Ex. le 15/07 : A = 15/06→15/07,
+ *  B = 15/05→14/06 (le 15/06 n'est compté qu'une fois, côté A). */
 function computeMonths(): { A: Range; B: Range } {
   const now = new Date();
   const aFrom = new Date(now);
   aFrom.setMonth(aFrom.getMonth() - 1);
   const bFrom = new Date(aFrom);
   bFrom.setMonth(bFrom.getMonth() - 1);
+  const bTo = new Date(aFrom);
+  bTo.setDate(bTo.getDate() - 1); // veille du début de A
   return {
     A: { from: isoDate(aFrom), to: isoDate(now) },
-    B: { from: isoDate(bFrom), to: isoDate(aFrom) },
+    B: { from: isoDate(bFrom), to: isoDate(bTo) },
   };
 }
 

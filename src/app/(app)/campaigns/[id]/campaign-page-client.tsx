@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast, Toaster } from "sonner";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BuilderClient } from "../../dashboards/[id]/builder-client";
 import { CampaignEditorDialog } from "../campaign-editor-dialog";
@@ -102,11 +101,6 @@ export function CampaignPageClient({ campaignId }: { campaignId: string }) {
     }, 500);
   }
 
-  function updateName(name: string) {
-    setCampaign((c) => (c ? { ...c, name } : c));
-    patchCampaign({ name });
-  }
-
   function updateShared(is_shared: boolean) {
     setCampaign((c) => (c ? { ...c, is_shared } : c));
     patchCampaign({ is_shared });
@@ -137,13 +131,6 @@ export function CampaignPageClient({ campaignId }: { campaignId: string }) {
             <span className="text-xs text-zinc-500">Enregistrement…</span>
           )}
         </div>
-        <Input
-          value={campaign.name}
-          onChange={(e) => updateName(e.target.value)}
-          disabled={!campaign.can_edit}
-          className="text-lg font-semibold bg-white"
-          placeholder="Nom du funnel"
-        />
         <div className="flex items-center gap-2">
           <input
             id="shared-toggle"
