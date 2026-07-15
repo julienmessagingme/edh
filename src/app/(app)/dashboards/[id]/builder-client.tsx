@@ -46,6 +46,7 @@ import { FancyFunnelChart } from "./funnel-chart-fancy";
 import { FunnelTable } from "./funnel-table";
 import { PieChartViz } from "./pie-chart";
 import { PieTable } from "./pie-table";
+import { PeriodCompareDialog } from "./period-compare-dialog";
 import {
   exportFunnelToExcel,
   exportFunnelToPDF,
@@ -197,6 +198,7 @@ export function BuilderClient({
     to: null,
   });
   const [exporting, setExporting] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
 
   // Miroir de can_edit pour le garde-fou de `persist` : un viewer en lecture
   // seule (non-owner, typiquement un collègue ouvrant une campagne partagée)
@@ -863,6 +865,14 @@ export function BuilderClient({
                 className="w-40"
               />
             </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setCompareOpen(true)}
+              title="Comparer les données de deux périodes côte à côte"
+            >
+              Comparer les périodes
+            </Button>
           </div>
         </div>
 
@@ -1202,6 +1212,12 @@ export function BuilderClient({
           </div>
         )}
       </DragOverlay>
+      <PeriodCompareDialog
+        dashboardId={dashboardId}
+        type={dashboard.type}
+        open={compareOpen}
+        onOpenChange={setCompareOpen}
+      />
     </DndContext>
   );
 }
