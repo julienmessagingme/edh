@@ -4,13 +4,18 @@
 
 ## En cours
 
-(rien — Phase 26 « tableaux partageables » livrée 2026-05-25. Prod sur https://edh.messagingme.app)
+(rien — prod sur https://edh.messagingme.app)
 
-## À appliquer avant déploiement de la Phase 26
+## Fait récemment (depuis le dernier sync)
 
-- **Migration 013_dashboard_is_shared.sql** dans Supabase SQL Editor avant de pull/redeploy. Ajoute `dashboards.is_shared` + index partiel pour la requête « tableaux partagés visibles dans cette école ». Les tableaux existants restent privés (DEFAULT false), comportement inchangé pour eux.
+- **Réorganisation des stats par type de viz** (2026-07-17) : sous-nav `[Pie charts] [Funnel] [Global]`, création pie-only dans Pie charts, mini pie au hover d'une étape multi-sources, **comparaison de 2 périodes**, **onglet Global** (rapport texte + % de conversion + export PDF). Porté ensuite sur neoma et ganprev. Détail produit dans `features.md`.
+- **Fix compteur Stats plafonné à 1000** : `/api/stats/custom-events` tronquait à 1000 (cap `max-rows` PostgREST) le count d'un event porteur **et son coût Meta**. Fix par pagination `.range()`, même pattern que la route dashboard `/data` (qui, elle, était déjà correcte). Corrigé aussi sur neoma et ganprev.
 
-## Seed data temporaire en place — à cleaner mercredi/jeudi 2026-05-22 ou 23
+## ⚠️ Seed data temporaire TOUJOURS EN PLACE ? — échéance dépassée (annoncée 2026-05-22/23)
+
+> ⚠️ Au 2026-07-17, aucun commit ni doc n'atteste du nettoyage : **à vérifier en base avant
+> de se fier aux stats EDH**. Si le seed est encore là, les volumes de 4 écoles sont gonflés.
+> Le SQL de cleanup est ci-dessous. Suivi dans `todo.md` (priorité).
 
 Julien a demandé du fake data pour démos pendant 2-3 jours. Injecté le 2026-05-20 :
 

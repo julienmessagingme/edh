@@ -2,6 +2,15 @@
 
 > Backlog : idées validées mais pas commencées, bugs connus, améliorations.
 
+## 🔴 Priorité
+
+- **Purger le seed data de démo (6713 occurrences fake)** — injecté le 2026-05-20 pour des
+  démos, à nettoyer « le 2026-05-22 ou 23 » ; au **2026-07-17 aucune trace de nettoyage**.
+  Tant que ce n'est pas vérifié, les stats de 4 écoles (EFAP, Brassart, CESINE, ESEC) sur les
+  events « CTWA EN » sont potentiellement gonflées. **Vérifier en base d'abord**, le SQL de
+  cleanup est prêt dans `wip.md`. Marqueurs : `mm_events.event_ns LIKE 'seed_%'` (Brassart/
+  CESINE/ESEC) et `mm_occurrences.id <= -1000000000` (EFAP).
+
 ## Hors scope V1 (à considérer pour V2)
 
 - **Hash IP RGPD-strict** : actuellement `clicks.ip` est en clair (outil interne). Si EDH veut être strict ou si on ouvre l'outil à plus de monde, hasher (HMAC avec rotation de salt mensuelle) ou tronquer le dernier octet.

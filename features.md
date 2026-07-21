@@ -42,7 +42,7 @@ L'accès EDH = lecture sur les **9 écoles**, indépendamment de l'ensemble d'é
 
 Le header expose 2 ou 3 grands modes selon le rôle :
 
-- **Stats** (par défaut) — URLs trackées + analytics MessagingMe + tableaux personnalisés + campagnes. Sous-nav : `[URLs] [Stats] [Mes tableaux] [Campagnes]`.
+- **Stats** (par défaut) — URLs trackées + analytics MessagingMe + tableaux personnalisés, organisés **par type de visualisation**. Sous-nav : `[URLs] [Stats] [Pie charts] [Funnel] [Global]`.
 - **Base de connaissance** — alimente le vector store OpenAI de l'école courante (voir plus bas).
 - **Admin** — visible **uniquement par les administrateurs**. Gestion des utilisateurs (voir plus bas).
 
@@ -121,14 +121,16 @@ Un vector store OpenAI par école. Quand on uploade un fichier, un texte ou une 
 
 **Statut :** ✅ livré.
 
-## Mes tableaux (custom dashboards)
+## Pie charts (custom dashboards)
 
 Troisième sous-onglet de Stats. Chaque user UI (Julien, EDH) construit ses propres tableaux de pilotage par école, persistés en DB et privés à leur créateur (personne d'autre ne les voit).
 
+Les stats visuelles sont réparties **par type de viz** : cet onglet **Pie charts**, l'onglet **Funnel** (= campagnes, cf. plus bas) et l'onglet **Global** (rapport texte, cf. plus bas).
+
 **Page liste `/dashboards`** :
 
-- Grille de cards : nom du tableau, type (funnel ou pie chart), date de dernière modification.
-- Bouton « + Nouveau funnel » → modal qui demande un nom + **un type de viz** (funnel ou pie chart, radio) → ouvre le builder.
+- Grille de cards : nom du tableau, type, date de dernière modification. Les funnels créés avant la réorganisation restent listés et ouvrables.
+- Bouton « + Nouveau pie chart » → modal qui demande un nom. **La création est forcée en camembert** dans cet onglet (plus de choix funnel/pie) : les funnels se créent via l'onglet **Funnel**.
 - Icône poubelle par card pour supprimer.
 
 **Builder `/dashboards/[id]`** :
@@ -138,7 +140,7 @@ Troisième sous-onglet de Stats. Chaque user UI (Julien, EDH) construit ses prop
 - Au milieu, zone funnel : les étapes choisies dans l'ordre. Chaque étape a un **label éditable** (placeholder = composition auto `A + B + C`), une badge `MM / URL / Mixte`, et une liste de **chips** pour ses sources. Bouton `+ Ajouter` dans chaque étape pour ajouter une source via menu déroulant. Drag-and-drop pour réordonner les étapes, ✕ pour retirer une chip (si dernière chip → l'étape entière est supprimée), poubelle pour supprimer toute l'étape. Une chip dont la source a disparu (event mm supprimé, URL archivée) s'affiche grisée.
 - À gauche aussi, **filtre de palette** : un select en haut permet de basculer entre « Tout (palette complète) » et « Par campagne » → la palette n'affiche plus que les briques rattachées à la campagne choisie. Cf. section **Campagnes** plus bas.
 - À droite, visualisation avec **toggle 2 modes** :
-  - **Barres** (par défaut) : bar chart vertical recharts, hauteur = volume cumulé des sources de l'étape. Labels d'étapes en bas inclinés à -25° pour ne pas se chevaucher.
+  - **Barres** (par défaut) : bar chart vertical recharts, hauteur = volume cumulé des sources de l'étape. Labels d'étapes en bas inclinés à -25° pour ne pas se chevaucher. Au survol d'une étape alimentée par **plusieurs sources**, le tooltip affiche un **mini camembert** de la répartition (+ légende chiffrée et %), pour voir d'un coup d'œil le poids de chaque source dans le cumul.
   - **Entonnoir** : funnel trapézoïdal reaviz purple+glow, conteneur light avec halo subtil. Pas de labels écrits dans l'entonnoir → tooltip premium au hover (étape + volume + conversion vs précédent + conversion vs étape 1).
   Le choix de mode est persisté en `localStorage` par navigateur.
 - Sous le chart : table récap (étape, volume, conv. vs précédent, conv. vs étape 1, breakdown des sources individuelles si > 1).
@@ -146,6 +148,7 @@ Troisième sous-onglet de Stats. Chaque user UI (Julien, EDH) construit ses prop
   - **Excel (.xlsx)** : tableau seul (entêtes + lignes + sous-lignes pour les cumuls), avec metadata (nom du tableau, période, date d'export).
   - **PDF** : capture du chart actif (Barres ou Entonnoir selon ton choix de toggle) + tableau, en A4 paysage avec titre.
 - Auto-save : chaque modif (renommage, ordre, étapes, sources, dates, label) est sauvegardée silencieusement après 500 ms (toast « Enregistrement… » discret en haut à droite).
+- **Comparaison de 2 périodes** (pie charts et funnels) : bouton « Comparer les périodes » à côté du sélecteur de période. Modale à 3 modes — **2 derniers mois glissants** (sans chevauchement de jour), **derniers trimestres calendaires**, ou **dates manuelles**. Rendu côte à côte : les 2 graphes + une table comparative Période A / Période B / écart / écart % (vert si hausse, rouge si baisse). Lecture seule : ne modifie pas la période enregistrée du tableau.
 
 **Étapes cumulées (rapports cumul)** : on peut empiler plusieurs sources dans une même étape — par exemple `relance benin V1` + `relance benin V2` + `relance ICART V1` formant l'étape `Relances`, dont le volume affiché = somme des trois. Mix mm + URL autorisé. Si une source disparaît, l'étape continue de fonctionner avec les sources restantes ; l'étape n'est marquée « indisponible » que si toutes ses sources ont disparu.
 
@@ -162,7 +165,7 @@ Utile pour répondre à des questions de répartition (« quelle école apporte 
 
 **Statut :** ✅ livré.
 
-## Campagnes
+## Campagnes (onglet « Funnel »)
 
 Quatrième sous-onglet de Stats (`[URLs] [Stats] [Mes tableaux] [Campagnes]`). Une campagne est un **regroupement nommé d'events MM et d'URLs trackées** rattaché à une école (ou au scope EDH groupe), avec **son propre tableau drag-and-drop** lié en 1:1. C'est l'unité de pilotage d'une opération marketing : on définit les briques qu'on veut suivre, puis on construit le funnel dans la foulée.
 
@@ -198,6 +201,23 @@ Quatrième sous-onglet de Stats (`[URLs] [Stats] [Mes tableaux] [Campagnes]`). U
 **Suivi du coût Meta (envois WhatsApp)** : au-delà des briques du funnel, une campagne peut désigner des **events de lancement** (les envois WhatsApp porteurs du numéro de tél des destinataires) et des **events « failed »** (échecs d'envoi). Le builder affiche alors une **synthèse coût Meta** : envois lancés, failed, **envois réussis** (lancés − failed) et **coût net Meta** estimé par indicatif pays (cliquable pour le détail). Les events de lancement **comme** les events failed se **cumulent** : on peut en désigner plusieurs, leurs volumes (et coûts) se somment. La gestion se fait soit en inline dans le builder (0 ou 1 event par rôle), soit via la modale « Modifier les briques » (2+ events, affichés en chips). Les briques du funnel, elles, restent distinctes de ces deux rôles (un event ne peut pas être à la fois lancement, failed et étape).
 
 Les étapes **Lancement** et **Échec** affichées dans le funnel sont nommées automatiquement (« Lancement : <events> »), mais on peut leur donner un **nom personnalisé** via le champ au-dessus de leurs chips dans le builder (laisser vide = nom auto). Idem pour les étapes normales : leur nom est éditable et se répercute dans le tableau et le graphe.
+
+**Statut :** ✅ livré.
+
+## Global (rapport texte de tous les funnels)
+
+Cinquième sous-onglet de Stats (`/global`). Vue **texte** — pas de graphe — qui reprend
+**tous les funnels de l'école courante** en un seul document, pour lecture rapide ou envoi.
+
+- Une section par funnel : les lignes **Nombre d'envois**, **Échecs WhatsApp** (en rouge) et
+  **Envois hors échecs** quand la campagne a un event de lancement, puis **une ligne par étape**.
+- **% de conversion en face de chaque ligne** : les envois = 100 %, échecs et net = % des envois,
+  chaque étape = % des envois hors échecs (ou de la 1re étape si le funnel n'a pas de lancement).
+- **Sélecteur de période** : 7 / 30 / 90 jours ou dates manuelles.
+- **Comparaison de 2 périodes** (mêmes modes que dans le builder) : chaque ligne affiche alors
+  A, B, l'écart et l'écart %.
+- **Export PDF** natif : document texte (sélectionnable, multi-page), en-tête avec le logo et le
+  nom de l'école.
 
 **Statut :** ✅ livré.
 
