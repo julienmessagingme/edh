@@ -67,6 +67,37 @@ export async function GET(req: Request) {
   const fromUtc = `${parsed.data.from}T00:00:00${fromOffset}`;
   const toUtc = `${parsed.data.to}T23:59:59.999${toOffset}`;
 
+  // PostgREST plafonne le nombre de lignes renvoyées par requête (`max-rows`,
+  // 1000 par défaut côté Supabase) : un simple `.limit(10000)` est SILENCIEUSEMENT
+  // tronqué à 1000. Un event porteur de numéros avec >1000 occurrences (gros
+  // lancement WhatsApp) était donc affiché « 1000 occurrences » avec un coût Meta
+  // sous-évalué. On pagine par `.range()` jusqu'à épuisement ; `.order('id')`
+  // garantit une pagination stable. Même correctif que la route dashboard /data.
+  async function fetchOccurrenceTextValues(
+    school: string,
+    evNs: string
+  ): Promise<string[]> {
+    const PAGE = 1000;
+    const MAX_ROWS = 200_000; // garde-fou dur (200 requêtes au pire)
+    const out: string[] = [];
+    for (let offset = 0; offset < MAX_ROWS; offset += PAGE) {
+      const { data, error } = await sb
+        .from("mm_occurrences")
+        .select("text_value")
+        .eq("school_slug", school)
+        .eq("event_ns", evNs)
+        .gte("occurred_at", fromUtc)
+        .lte("occurred_at", toUtc)
+        .order("id", { ascending: true })
+        .range(offset, offset + PAGE - 1);
+      if (error) throw error;
+      const rows = (data ?? []) as { text_value: string | null }[];
+      for (const r of rows) out.push(r.text_value ?? "");
+      if (rows.length < PAGE) break;
+    }
+    return out;
+  }
+
   const counts = await Promise.all(
     (events ?? []).map(async (ev) => {
       const isPhoneCarrier = ((ev as { text_label?: string | null }).text_label ?? "").trim().length > 0;
@@ -81,20 +112,13 @@ export async function GET(req: Request) {
 
       if (isPhoneCarrier) {
         // Event porteur (text_label non vide) → on récupère les text_value
-        // pour calculer count + coût Meta + breakdown par pays en une seule
-        // requête. Limite 10k (au-delà sous-évalué — cf. todo perf).
-        const { data: occRows } = await sb
-          .from("mm_occurrences")
-          .select("text_value")
-          .eq("school_slug", ev.school_slug)
-          .eq("event_ns", ev.event_ns)
-          .gte("occurred_at", fromUtc)
-          .lte("occurred_at", toUtc)
-          .limit(10000);
-        const rows = (occRows ?? []) as { text_value: string | null }[];
-        const phones = rows
-          .map((r) => r.text_value ?? "")
-          .filter((p) => p.length > 0);
+        // pour calculer count + coût Meta + breakdown par pays. Pagination
+        // `.range()` : le count est le nb RÉEL d'occurrences, pas un cap à 1000.
+        const values = await fetchOccurrenceTextValues(
+          ev.school_slug,
+          ev.event_ns
+        );
+        const phones = values.filter((p) => p.length > 0);
         const breakdown = groupMetaCostsByCountry(phones);
         const metaBreakdown: MetaCostBreakdownItem[] = breakdown.map((b) => ({
           iso: b.iso,
@@ -109,7 +133,7 @@ export async function GET(req: Request) {
         );
         return {
           ...base,
-          count: rows.length,
+          count: values.length,
           meta_cost_eur: metaCostEur,
           meta_breakdown: metaBreakdown,
         };
