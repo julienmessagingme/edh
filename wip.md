@@ -11,36 +11,6 @@
 - **Réorganisation des stats par type de viz** (2026-07-17) : sous-nav `[Pie charts] [Funnel] [Global]`, création pie-only dans Pie charts, mini pie au hover d'une étape multi-sources, **comparaison de 2 périodes**, **onglet Global** (rapport texte + % de conversion + export PDF). Porté ensuite sur neoma et ganprev. Détail produit dans `features.md`.
 - **Fix compteur Stats plafonné à 1000** : `/api/stats/custom-events` tronquait à 1000 (cap `max-rows` PostgREST) le count d'un event porteur **et son coût Meta**. Fix par pagination `.range()`, même pattern que la route dashboard `/data` (qui, elle, était déjà correcte). Corrigé aussi sur neoma et ganprev.
 
-## ⚠️ Seed data temporaire TOUJOURS EN PLACE ? — échéance dépassée (annoncée 2026-05-22/23)
-
-> ⚠️ Au 2026-07-17, aucun commit ni doc n'atteste du nettoyage : **à vérifier en base avant
-> de se fier aux stats EDH**. Si le seed est encore là, les volumes de 4 écoles sont gonflés.
-> Le SQL de cleanup est ci-dessous. Suivi dans `todo.md` (priorité).
-
-Julien a demandé du fake data pour démos pendant 2-3 jours. Injecté le 2026-05-20 :
-
-- **6713 occurrences fake** réparties sur 7 jours, 4 écoles (EFAP, Brassart, CESINE, ESEC), 4 events « CTWA EN: entrée campagne / Etape 1..4 ».
-- **Marqueurs pour cleanup** :
-  - Brassart/CESINE/ESEC : `mm_events.event_ns LIKE 'seed_%'` (les 4 events n'existaient pas naturellement → on les a créés)
-  - EFAP : `mm_occurrences.id <= -1000000000` (les events existaient déjà → on a ajouté des occurrences avec id négatif sur les events réels)
-- **Le cron 22h ne touche PAS au seed** (vérifié dans `src/lib/messagingme/sync.ts`) : pas de `DELETE` dans le code, watermark positif côté messagingme, ids seed négatifs → cohabitation propre.
-
-**SQL de cleanup à passer dans Supabase SQL Editor** :
-
-```sql
-BEGIN;
--- Cascade FK ON DELETE CASCADE → supprime aussi les occurrences seed des 3 écoles
-DELETE FROM mm_events
-  WHERE school_slug IN ('brassart','cesine','esec')
-    AND event_ns LIKE 'seed_%';
--- Restantes : les occurrences seed EFAP (events réels EFAP qu'on garde)
-DELETE FROM mm_occurrences WHERE id <= -1000000000;
-COMMIT;
--- Validation (les 2 doivent retourner 0)
-SELECT count(*) FROM mm_occurrences WHERE id <= -1000000000;
-SELECT count(*) FROM mm_events WHERE event_ns LIKE 'seed_%';
-```
-
 ## À traiter dans la prochaine session
 
 - **Cocher l'accès EDH** pour Laura et Sarah dans Admin une fois validé fonctionnellement par Julien.
